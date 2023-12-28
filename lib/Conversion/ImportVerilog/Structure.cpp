@@ -173,12 +173,8 @@ Context::convertModuleBody(const slang::ast::InstanceBodySymbol *module) {
         return failure();
 
       Value initial;
-      if (varAst->getInitializer()) {
+      if (varAst->getInitializer())
         initial = convertExpression(*varAst->getInitializer());
-        if (initial.getType() != loweredType)
-          initial =
-              builder.create<moore::ConversionOp>(loc, loweredType, initial);
-      }
 
       auto varOp = builder.create<moore::VariableOp>(
           convertLocation(varAst->location), loweredType,
@@ -194,12 +190,8 @@ Context::convertModuleBody(const slang::ast::InstanceBodySymbol *module) {
         return failure();
 
       Value assignment;
-      if (netAst->getInitializer()) {
+      if (netAst->getInitializer())
         assignment = convertExpression(*netAst->getInitializer());
-        if (assignment.getType() != loweredType)
-          assignment =
-              builder.create<moore::ConversionOp>(loc, loweredType, assignment);
-      }
 
       auto netOp = builder.create<moore::NetOp>(
           convertLocation(netAst->location), loweredType,
