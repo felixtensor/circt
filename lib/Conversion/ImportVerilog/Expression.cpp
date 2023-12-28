@@ -44,8 +44,7 @@ struct ExprVisitor {
     auto rhs = context.convertExpression(expr.right());
     if (!lhs || !rhs)
       return {};
-    if (lhs.getType() != rhs.getType())
-      rhs = builder.create<moore::ConversionOp>(loc, lhs.getType(), rhs);
+
     if (expr.isNonBlocking())
       builder.create<moore::PAssignOp>(loc, lhs, rhs);
     else if (expr.syntax->parent->kind ==
