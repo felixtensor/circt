@@ -64,17 +64,7 @@ struct Context {
   visitConditionalStmt(const slang::ast::ConditionalStatement *conditionalStmt);
 
   // Convert a slang expression into an MLIR expression.
-  Value visitExpression(const slang::ast::Expression *expression);
-
-  Value
-  visitIntegerLiteral(const slang::ast::IntegerLiteral *integerLiteralExpr);
-  Value visitNamedValue(const slang::ast::NamedValueExpression *namedValueExpr);
-  Value visitUnaryOp(const slang::ast::UnaryExpression *unaryExpr);
-  Value visitBinaryOp(const slang::ast::BinaryExpression *binaryExpr);
-  Value
-  visitAssignmentExpr(const slang::ast::AssignmentExpression *assignmentExpr);
-  Value
-  visitConcatenation(const slang::ast::ConcatenationExpression *concatExpr);
+  Value convertExpression(const slang::ast::Expression &expr);
 
   // Convert a slang timing control into an MLIR timing control.
   LogicalResult
