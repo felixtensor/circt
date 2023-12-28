@@ -185,19 +185,33 @@ def EventControlOp : MooreOp<"event", [
 // Expressions
 //===----------------------------------------------------------------------===//
 
-def ConversionOp : MooreOp<"conversion", [
-  Pure
-]> {
+def ConversionOp : MooreOp<"conversion", [Pure]> {
   let summary = "A type conversion";
   let description = [{
-    Like logic[31:0] a; int b; assign a = b;
-    The type of b is converted from int to logic[31:0].
+    An explicit or implicit type conversion. These are either generated
+    automatically in order to make assignments compatible:
+
+    ```
+    int a;
+    shortint b;
+    a = b;  // generates an implicit cast from shortint to int
+    ```
+
+    Or explicitly by the user through a type, sign, or const cast expression:
+
+    ```
+    byte'(a)
+    unsigned'(a)
+    signed'(a)
+    42'(a)
+    ```
+
+    See IEEE 1800-2017 § 6.24 "Casting".
   }];
-  let arguments = (ins AnyType:$src);
-  let results = (outs SimpleBitVectorType:$result);
-  
+  let arguments = (ins AnyType:$input);
+  let results = (outs UnpackedType:$result);
   let assemblyFormat = [{
-    $src attr-dict `:` functional-type($src, $result)
+    $input attr-dict `:` type($input) `->` type($result)
   }];
 }
 

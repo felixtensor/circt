@@ -96,6 +96,36 @@ module Expressions();
 endmodule
 
 
+// CHECK-LABEL: moore.module @Conversion {
+module Conversion();
+  // Implicit conversion.
+  // CHECK: %a = moore.variable
+  // CHECK: [[TMP:%.+]] = moore.conversion %a : !moore.shortint -> !moore.int
+  // CHECK: %b = moore.variable [[TMP]]
+  shortint a;
+  int b = a;
+
+  // Explicit conversion.
+  // CHECK: [[TMP1:%.+]] = moore.conversion %a : !moore.shortint -> !moore.byte
+  // CHECK: [[TMP2:%.+]] = moore.conversion [[TMP1]] : !moore.byte -> !moore.int
+  // CHECK: %c = moore.variable [[TMP2]]
+  int c = byte'(a);
+
+  // Sign conversion.
+  // CHECK: [[TMP:%.+]] = moore.conversion %b : !moore.int -> !moore.packed<range<bit<signed>, 31:0>>
+  // CHECK: %d1 = moore.variable [[TMP]]
+  // CHECK: [[TMP:%.+]] = moore.conversion %b : !moore.int -> !moore.packed<range<bit, 31:0>>
+  // CHECK: %d2 = moore.variable [[TMP]]
+  bit signed [31:0] d1 = signed'(b);
+  bit [31:0] d2 = unsigned'(b);
+
+  // Width conversion.
+  // CHECK: [[TMP:%.+]] = moore.conversion %b : !moore.int -> !moore.packed<range<bit<signed>, 18:0>>
+  // CHECK: %e = moore.variable [[TMP]]
+  bit signed [18:0] e = 19'(b);
+endmodule
+
+
 // CHECK-LABEL: moore.module @Assignments {
 module Assignments();
   // CHECK: %a = moore.variable : !moore.int
