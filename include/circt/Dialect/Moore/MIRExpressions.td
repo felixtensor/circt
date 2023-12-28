@@ -54,14 +54,6 @@ class UTVariadicOp<string mnemonic, list<Trait> traits = []> :
   ];
 }
 
-def ConstantOp : MIROp<"constant", [Pure]> {
-  let summary = "A constant value";
-
-  let arguments = (ins I32Attr:$value);
-  let results = (outs UnpackedType:$result);
-  let assemblyFormat = "$value attr-dict `:` qualified(type($result))";
-}
-
 def ConcatOp : MIROp<"concat", [
     Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>
 ]> {

@@ -34,6 +34,8 @@ module Expressions();
   int a, b, c;
 
   initial begin
+    // CHECK: moore.constant 42 : !moore.int
+    c = 42;
     // CHECK: moore.mir.unary plus %a : !moore.int
     c = +a;
     // CHECK: moore.mir.unary minus %a : !moore.int
@@ -150,7 +152,7 @@ module Statements();
   int a, b;
 
   initial begin
-    // CHECK: [[ZERO:%.+]] = moore.mir.constant 0 : !moore.int
+    // CHECK: [[ZERO:%.+]] = moore.constant 0 : !moore.int
     // CHECK: [[COND:%.+]] = moore.mir.ne %a, [[ZERO]] : !moore.int, !moore.int
     // CHECK: scf.if [[COND]]
     if (a)
