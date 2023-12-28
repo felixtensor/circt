@@ -232,10 +232,14 @@ Value Context::visitExpression(const slang::ast::Expression *expression) {
   case slang::ast::ExpressionKind::Concatenation:
     return visitConcatenation(
         &expression->as<slang::ast::ConcatenationExpression>());
-  case slang::ast::ExpressionKind::Conversion:
-    return visitExpression(
-        &expression->as<slang::ast::ConversionExpression>().operand());
-  // There is other cases.
+  case slang::ast::ExpressionKind::Conversion: {
+    auto &conv = expression->as<slang::ast::ConversionExpression>();
+    auto type = convertType(*conv.type);
+    auto operand = visitExpression(&conv.operand());
+    if (!operand)
+      return nullptr;
+    return builder.create<moore::ConversionOp>(loc, type, operand);
+  }
   default:
     mlir::emitError(loc, "unsupported expression");
     return nullptr;
