@@ -185,6 +185,18 @@ def EventControlOp : MooreOp<"event", [
 // Expressions
 //===----------------------------------------------------------------------===//
 
+def ConstantOp : MooreOp<"constant", [Pure]> {
+  let summary = "A constant integer value";
+  let arguments = (ins APIntAttr:$value);
+  let results = (outs SimpleBitVectorType:$result);
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+  let builders = [
+    OpBuilder<(ins "Type":$type, "const APInt &":$value)>,
+    OpBuilder<(ins "Type":$type, "int64_t":$value)>,
+  ];
+}
+
 def ConversionOp : MooreOp<"conversion", [Pure]> {
   let summary = "A type conversion";
   let description = [{
