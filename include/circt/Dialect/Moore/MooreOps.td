@@ -12,6 +12,10 @@
 include "mlir/IR/RegionKindInterface.td"
 include "circt/Dialect/Moore/MooreTypes.td"
 
+//===----------------------------------------------------------------------===//
+// Structure
+//===----------------------------------------------------------------------===//
+
 def SVModuleOp : MooreOp<"module", [
   IsolatedFromAbove,
   Symbol,
@@ -44,6 +48,72 @@ def InstanceOp : MooreOp<"instance", [
                        FlatSymbolRefAttr:$moduleName);
   let assemblyFormat = [{
     $instanceName $moduleName attr-dict
+  }];
+}
+
+def Initial: I32EnumAttrCase<"Initial", 0, "initial">;
+def Final: I32EnumAttrCase<"Final", 1, "final">;
+def Always: I32EnumAttrCase<"Always", 2, "always">;
+def AlwaysComb: I32EnumAttrCase<"AlwaysComb", 3, "always_comb">;
+def AlwaysLatch: I32EnumAttrCase<"AlwaysLatch", 4, "always_latch">;
+def AlwaysFF: I32EnumAttrCase<"AlwaysFF", 5, "always_ff">;
+
+def ProcedureKindAttr: I32EnumAttr<"ProcedureKind", "Procedure kind",
+            [Initial, Final, Always, AlwaysComb, AlwaysLatch, AlwaysFF]>{
+  let cppNamespace = "circt::moore";
+}
+
+def ProcedureOp : MooreOp<"procedure", [
+  SingleBlock,
+  NoTerminator,
+  NoRegionArguments,
+  RecursiveMemoryEffects,
+  RecursivelySpeculatable
+]> {
+  let summary = "A procedure executed at specific simulation steps";
+  let description = [{
+    See IEEE 1800-2017 § 9.2 "Structured procedures".
+  }];
+
+  let regions = (region SizedRegion<1>:$body);
+  let arguments = (ins ProcedureKindAttr:$kind);
+  let results = (outs);
+
+  let assemblyFormat = [{
+    $kind attr-dict-with-keyword $body
+  }];
+
+  let extraClassDeclaration = [{
+    mlir::Block &getBodyBlock() {
+      if (getBody().empty())
+        getBody().emplaceBlock();
+      return getBody().front();
+    }
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// Declarations
+//===----------------------------------------------------------------------===//
+
+def In: I32EnumAttrCase<"In", 0>;
+def Out: I32EnumAttrCase<"Out", 1>;
+def InOut: I32EnumAttrCase<"InOut", 2>;
+def Ref: I32EnumAttrCase<"Ref", 3>;
+
+def DirectionAttr: I32EnumAttr<"Direction", "Port direction",
+                                  [In, Out, InOut, Ref]>{
+  let cppNamespace = "circt::moore";
+}
+
+def PortOp : MooreOp<"port", [
+  RecursiveMemoryEffects
+]> {
+  let summary = "Declare a port";
+  let arguments = (ins StrAttr:$name, DirectionAttr:$direction);
+  let results = (outs);
+  let assemblyFormat = [{
+    $direction $name attr-dict
   }];
 }
 
@@ -85,67 +155,9 @@ def NetOp : MooreOp<"net", [
   }];
 }
 
-def Initial: I32EnumAttrCase<"Initial", 0, "initial">;
-def Final: I32EnumAttrCase<"Final", 1, "final">;
-def Always: I32EnumAttrCase<"Always", 2, "always">;
-def AlwaysComb: I32EnumAttrCase<"AlwaysComb", 3, "always_comb">;
-def AlwaysLatch: I32EnumAttrCase<"AlwaysLatch", 4, "always_latch">;
-def AlwaysFF: I32EnumAttrCase<"AlwaysFF", 5, "always_ff">;
-
-def ProcedureKindAttr: I32EnumAttr<"ProcedureKind", "Procedure kind",
-            [Initial, Final, Always, AlwaysComb, AlwaysLatch, AlwaysFF]>{
-  let cppNamespace = "circt::moore";
-}
-
-def ProcedureOp : MooreOp<"procedure", [
-  SingleBlock,
-  NoTerminator,
-  NoRegionArguments,
-  RecursiveMemoryEffects,
-  RecursivelySpeculatable
-]> {
-  let summary = "A procedure executed at specific simulation steps";
-  let description = [{
-    See IEEE 1800-2017 § 9.2 "Structured procedures".
-  }];
-
-  let regions = (region SizedRegion<1>:$body);  
-  let arguments = (ins ProcedureKindAttr:$kind);
-  let results = (outs);
-
-  let assemblyFormat = [{
-    $kind attr-dict-with-keyword $body
-  }];
-
-  let extraClassDeclaration = [{
-    mlir::Block &getBodyBlock() {
-      if (getBody().empty())
-        getBody().emplaceBlock();
-      return getBody().front();
-    }
-  }];
-}
-
-def In: I32EnumAttrCase<"In", 0>;
-def Out: I32EnumAttrCase<"Out", 1>;
-def InOut: I32EnumAttrCase<"InOut", 2>;
-def Ref: I32EnumAttrCase<"Ref", 3>;
-
-def DirectionAttr: I32EnumAttr<"Direction", "Port direction",
-                                  [In, Out, InOut, Ref]>{
-  let cppNamespace = "circt::moore";
-}
-
-def PortOp : MooreOp<"port", [
-  RecursiveMemoryEffects
-]> {
-  let summary = "Declare a port";
-  let arguments = (ins StrAttr:$name, DirectionAttr:$direction);
-  let results = (outs);
-  let assemblyFormat = [{
-    $direction $name attr-dict
-  }];
-}
+//===----------------------------------------------------------------------===//
+// Statements
+//===----------------------------------------------------------------------===//
 
 def None: I32EnumAttrCase<"None", 0, "none">;
 def PosEdge: I32EnumAttrCase<"PosEdge", 1, "posedge">;
@@ -169,9 +181,14 @@ def EventControlOp : MooreOp<"event", [
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// Expressions
+//===----------------------------------------------------------------------===//
+
 def ConversionOp : MooreOp<"conversion", [
   Pure
 ]> {
+  let summary = "A type conversion";
   let description = [{
     Like logic[31:0] a; int b; assign a = b;
     The type of b is converted from int to logic[31:0].
