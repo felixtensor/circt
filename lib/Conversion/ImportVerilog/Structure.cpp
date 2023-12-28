@@ -174,7 +174,7 @@ Context::convertModuleBody(const slang::ast::InstanceBodySymbol *module) {
 
       Value initial;
       if (varAst->getInitializer()) {
-        initial = visitExpression(varAst->getInitializer());
+        initial = convertExpression(*varAst->getInitializer());
         if (initial.getType() != loweredType)
           initial =
               builder.create<moore::ConversionOp>(loc, loweredType, initial);
@@ -195,7 +195,7 @@ Context::convertModuleBody(const slang::ast::InstanceBodySymbol *module) {
 
       Value assignment;
       if (netAst->getInitializer()) {
-        assignment = visitExpression(netAst->getInitializer());
+        assignment = convertExpression(*netAst->getInitializer());
         if (assignment.getType() != loweredType)
           assignment =
               builder.create<moore::ConversionOp>(loc, loweredType, assignment);
@@ -223,8 +223,8 @@ Context::convertModuleBody(const slang::ast::InstanceBodySymbol *module) {
 
     // Handle AssignOp.
     if (auto *assignAst = member.as_if<slang::ast::ContinuousAssignSymbol>()) {
-      visitAssignmentExpr(
-          &assignAst->getAssignment().as<slang::ast::AssignmentExpression>());
+      if (!convertExpression(assignAst->getAssignment()))
+        return failure();
       continue;
     }
 

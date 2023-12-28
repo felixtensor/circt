@@ -24,7 +24,7 @@ LogicalResult Context::visitConditionalStmt(
   auto loc = convertLocation(conditionalStmt->sourceRange.start());
   auto type = conditionalStmt->conditions.begin()->expr->type;
 
-  Value cond = visitExpression(conditionalStmt->conditions.begin()->expr);
+  Value cond = convertExpression(*conditionalStmt->conditions.begin()->expr);
   if (!cond)
     return failure();
 
@@ -69,8 +69,8 @@ Context::convertStatement(const slang::ast::Statement *statement) {
   case slang::ast::StatementKind::Block:
     return convertStatement(&statement->as<slang::ast::BlockStatement>().body);
   case slang::ast::StatementKind::ExpressionStatement:
-    return success(visitExpression(
-        &statement->as<slang::ast::ExpressionStatement>().expr));
+    return success(convertExpression(
+        statement->as<slang::ast::ExpressionStatement>().expr));
   case slang::ast::StatementKind::VariableDeclaration:
     return mlir::emitError(loc, "unsupported statement: variable declaration");
   case slang::ast::StatementKind::Return:
@@ -118,8 +118,8 @@ Context::convertStatement(const slang::ast::Statement *statement) {
   case slang::ast::StatementKind::EventTrigger:
     return mlir::emitError(loc, "unsupported statement: event trigger");
   case slang::ast::StatementKind::ProceduralAssign:
-    return success(visitExpression(
-        &statement->as<slang::ast::ProceduralAssignStatement>().assignment));
+    return success(convertExpression(
+        statement->as<slang::ast::ProceduralAssignStatement>().assignment));
   case slang::ast::StatementKind::ProceduralDeassign:
     return mlir::emitError(loc, "unsupported statement: procedural deassign");
   case slang::ast::StatementKind::RandCase:
