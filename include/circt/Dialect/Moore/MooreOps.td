@@ -232,7 +232,7 @@ def NegOp : MooreOp<"neg", [Pure, SameOperandsAndResultType]> {
   let summary = "Arithmetic negation";
   let description = [{
     Negate a value to its two's complement form. If any bit in the input is Z or
-    X, all bits in the result are set to X.
+    X, all bits in the result are X.
 
     See IEEE 1800-2017 § 11.4.3 "Arithmetic operators".
   }];
@@ -319,7 +319,6 @@ def BoolCastOp : MooreOp<"bool_cast", [
   }];
 }
 
-
 class BinaryOpBase<string mnemonic, list<Trait> traits = []> :
     MooreOp<mnemonic, traits # [Pure, SameOperandsAndResultType]> {
   let arguments = (ins SimpleBitVectorType:$lhs, SimpleBitVectorType:$rhs);
@@ -333,7 +332,7 @@ def AddOp : BinaryOpBase<"add", [Commutative]> {
   let summary = "Addition";
   let description = [{
     Add the operands. If any bit in the two operands is Z or X, all bits in the
-    result are set to X.
+    result are X.
 
     See IEEE 1800-2017 § 11.4.3 "Arithmetic operators".
   }];
@@ -343,7 +342,7 @@ def SubOp : BinaryOpBase<"sub"> {
   let summary = "Subtraction";
   let description = [{
     Subtract the right-hand side from the left-hand side operand. If any bit in
-    the two operands is Z or X, all bits in the result are set to X.
+    the two operands is Z or X, all bits in the result are X.
 
     See IEEE 1800-2017 § 11.4.3 "Arithmetic operators".
   }];
@@ -353,11 +352,216 @@ def MulOp : BinaryOpBase<"mul", [Commutative]> {
   let summary = "Multiplication";
   let description = [{
     Multiply the operands. If any bit in the two operands is Z or X, all bits in
-    the result are set to X.
+    the result are X.
 
     See IEEE 1800-2017 § 11.4.3 "Arithmetic operators".
   }];
 }
 
+def DivOp : BinaryOpBase<"div"> {
+  let summary = "Division";
+  let description = [{
+    Divide the left-hand side by the right-hand side operand. Any fractional
+    part is truncated toward zero. If the right-hand side is zero, all bits of
+    the result are X. If any bit in the two operands is Z or X, all bits in the
+    result are X.
+
+    See IEEE 1800-2017 § 11.4.3 "Arithmetic operators".
+  }];
+}
+
+def ModOp : BinaryOpBase<"mod"> {
+  let summary = "Remainder";
+  let description = [{
+    Compute the remainder of the left-hand side divided by the right-hand side
+    operand. If the right-hand side is zero, all bits of the result are X. The
+    sign of the result is the sign of the left-hand side. If any bit in the two
+    operands is Z or X, all bits in the result are X.
+
+    See IEEE 1800-2017 § 11.4.3 "Arithmetic operators".
+
+    Consider the following examples:
+
+    | LHS | RHS | Result |
+    |-----|-----|--------|
+    |  11 |   3 |      2 |
+    | -11 |   3 |     -2 |
+    |  11 |  -3 |      2 |
+    | -11 |  -3 |     -2 |
+  }];
+}
+
+def AndOp : BinaryOpBase<"and", [Commutative]> {
+  let summary = "Bitwise AND operation";
+  let description = [{
+    Applies the boolean AND operation to each pair of corresponding bits in the
+    left- and right-hand side operand. Corresponds to the `&` operator.
+
+    See IEEE 1800-2017 § 11.4.8 "Bitwise operators".
+
+    |   | 0 | 1 | X | Z |
+    |---|---|---|---|---|
+    | 0 | 0 | 0 | 0 | 0 |
+    | 1 | 0 | 1 | X | X |
+    | X | 0 | X | X | X |
+    | Z | 0 | X | X | X |
+  }];
+}
+
+def OrOp : BinaryOpBase<"or", [Commutative]> {
+  let summary = "Bitwise OR operation";
+  let description = [{
+    Applies the boolean OR operation to each pair of corresponding bits in the
+    left- and right-hand side operand. Corresponds to the `|` operator.
+
+    See IEEE 1800-2017 § 11.4.8 "Bitwise operators".
+
+    |   | 0 | 1 | X | Z |
+    |---|---|---|---|---|
+    | 0 | 0 | 1 | X | X |
+    | 1 | 1 | 1 | 1 | 1 |
+    | X | X | 1 | X | X |
+    | Z | X | 1 | X | X |
+  }];
+}
+
+def XorOp : BinaryOpBase<"xor", [Commutative]> {
+  let summary = "Bitwise XOR operation";
+  let description = [{
+    Applies the boolean XOR operation to each pair of corresponding bits in the
+    left- and right-hand side operand. Corresponds to the `^` operator.
+
+    See IEEE 1800-2017 § 11.4.8 "Bitwise operators".
+
+    |   | 0 | 1 | X | Z |
+    |---|---|---|---|---|
+    | 0 | 0 | 1 | X | X |
+    | 1 | 1 | 0 | X | X |
+    | X | X | X | X | X |
+    | Z | X | X | X | X |
+  }];
+}
+
+class LogicalEqOpBase<string mnemonic> : MooreOp<mnemonic, [
+  Pure,
+  Commutative,
+  SameTypeOperands,
+  TypesMatchWith<"result is single bit matching input domain",
+    "lhs", "result", [{
+    IntType::get($_self.getContext(),
+      IntType::getAtomForDomain($_self.cast<UnpackedType>().getDomain()))
+  }]>
+]> {
+  let description = [{
+    Compares the bits in the left- and right-hand side operand and returns a
+    single bit 0, 1, or X result. If all corresponding bits in the left- and
+    right-hand side are equal, and all are 0 or 1 (not X or Z), the two operands
+    are considered equal (`eq` returns 1, `ne` returns 0). If any bits are not
+    equal, but all are 0 or 1, the two operands are considered not equal (`eq`
+    returns 0, `ne` returns 1). If any bit in the two operands is Z or X,
+    returns X. `eq` corresponds to the `==` operator and `ne` to the `!=`
+    operator.
+
+    See IEEE 1800-2017 § 11.4.5 "Equality operators".
+  }];
+  let arguments = (ins SimpleBitVectorType:$lhs, SimpleBitVectorType:$rhs);
+  let results = (outs SingleBitType:$result);
+  let assemblyFormat = [{
+    $lhs `,` $rhs attr-dict `:` type($lhs) `->` type($result)
+  }];
+}
+
+def EqOp : LogicalEqOpBase<"eq"> { let summary = "Logical equality"; }
+def NeOp : LogicalEqOpBase<"ne"> { let summary = "Logical inequality"; }
+
+class CaseEqOpBase<string mnemonic> : MooreOp<mnemonic, [
+  Pure,
+  Commutative,
+  SameTypeOperands
+]> {
+  let description = [{
+    Compares the bits in the left- and right-hand side operand and returns a
+    single bit 0 or 1 result. If all corresponding bits in the left- and
+    right-hand side are equal (both 0, 1, X, or Z), the two operands are
+    considered equal (`case_eq` returns 1, `case_ne` returns 0). If any bits are
+    not equal, the two operands are considered not equal (`case_eq` returns 0,
+    `case_ne` returns 1). `case_eq` corresponds to the `===` operator and
+    `case_ne` to the `!==` operator.
+
+    See IEEE 1800-2017 § 11.4.5 "Equality operators".
+  }];
+  let arguments = (ins SimpleBitVectorType:$lhs, SimpleBitVectorType:$rhs);
+  let results = (outs BitType:$result);
+  let assemblyFormat = [{
+    $lhs `,` $rhs attr-dict `:` type($lhs)
+  }];
+}
+
+def CaseEqOp : CaseEqOpBase<"case_eq"> { let summary = "Case equality"; }
+def CaseNeOp : CaseEqOpBase<"case_ne"> { let summary = "Case inequality"; }
+
+class WildcardEqOpBase<string mnemonic> : MooreOp<mnemonic, [
+  Pure,
+  SameTypeOperands,
+  TypesMatchWith<"result is single bit matching input domain",
+    "lhs", "result", [{
+    IntType::get($_self.getContext(),
+      IntType::getAtomForDomain($_self.cast<UnpackedType>().getDomain()))
+  }]>
+]> {
+  let description = [{
+    Compares the bits in the left- and right-hand side operand and returns a
+    single bit 0, 1, or X result. If any bit in the left-hand side is Z or X,
+    returns X. Performs the same comparison as the `eq` and `ne` operations, but
+    all right-hand side bits that are X or Z are skipped. Therefore, X and Z in
+    the right-hand side act as wildcards or "don't care" values. `wildcard_eq`
+    corresponds to the `==?` operator and `wildcard_ne` to the `!=?` operator.
+
+    See IEEE 1800-2017 § 11.4.6 "Wildcard equality operators".
+  }];
+  let arguments = (ins SimpleBitVectorType:$lhs, SimpleBitVectorType:$rhs);
+  let results = (outs SingleBitType:$result);
+  let assemblyFormat = [{
+    $lhs `,` $rhs attr-dict `:` type($lhs) `->` type($result)
+  }];
+}
+
+def WildcardEqOp : WildcardEqOpBase<"wildcard_eq"> {
+  let summary = "Wildcard equality";
+}
+def WildcardNeOp : WildcardEqOpBase<"wildcard_ne"> {
+  let summary = "Wildcard inequality";
+}
+
+class RelationalOpBase<string mnemonic> : MooreOp<mnemonic, [
+  Pure,
+  SameTypeOperands,
+  TypesMatchWith<"result is single bit matching input domain",
+    "lhs", "result", [{
+    IntType::get($_self.getContext(),
+      IntType::getAtomForDomain($_self.cast<UnpackedType>().getDomain()))
+  }]>
+]> {
+  let description = [{
+    Compares the left- and right-hand side operand and returns a single bit 0,
+    1, or X result. If any bit in the two operands is Z or X, returns X.
+    Otherwise, if all bits are 0 or 1, `lt`, `le`, `gt`, and `ge` return whether
+    the left-hand side is less than, less than or equal to, greater than, or
+    greater than or equal to the right-hand side, respectively. `lt` corresponds
+    to the `<` operator, `le` to `<=`, `gt` to `>`, and `ge` to `>=`.
+
+    See IEEE 1800-2017 § 11.4.4 "Relational operators".
+  }];
+  let arguments = (ins SimpleBitVectorType:$lhs, SimpleBitVectorType:$rhs);
+  let results = (outs SingleBitType:$result);
+  let assemblyFormat = [{
+    $lhs `,` $rhs attr-dict `:` type($lhs) `->` type($result)
+  }];
+}
+
+def LtOp : RelationalOpBase<"lt"> { let summary = "Less than"; }
+def LeOp : RelationalOpBase<"le"> { let summary = "Less than or equal"; }
+def GtOp : RelationalOpBase<"gt"> { let summary = "Greater than"; }
+def GeOp : RelationalOpBase<"ge"> { let summary = "Greater than or equal"; }
 
 #endif // CIRCT_DIALECT_MOORE_MOOREOPS

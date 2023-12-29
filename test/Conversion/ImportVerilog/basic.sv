@@ -34,7 +34,7 @@ module Expressions();
   // CHECK: %c = moore.variable : !moore.int
   int a, b, c;
   bit [1:0][3:0] v;
-  integer d;
+  integer d, e, f;
   bit x;
   logic y;
 
@@ -100,10 +100,68 @@ module Expressions();
     // CHECK: moore.mir.bpassign %c, [[TMP2]]
     c = --a;
 
+    // Binary operators
+
     // CHECK: moore.add %a, %b : !moore.int
     c = a + b;
+    // CHECK: [[TMP1:%.+]] = moore.conversion %a : !moore.int -> !moore.packed<range<bit, 31:0>>
+    // CHECK: [[TMP2:%.+]] = moore.conversion %v : !moore.packed<range<range<bit, 3:0>, 1:0>> -> !moore.packed<range<bit, 31:0>>
+    // CHECK: [[TMP3:%.+]] = moore.add [[TMP1]], [[TMP2]] : !moore.packed<range<bit, 31:0>>
+    // CHECK: [[TMP4:%.+]] = moore.conversion [[TMP3]] : !moore.packed<range<bit, 31:0>> -> !moore.int
+    c = a + v;
+    // CHECK: moore.sub %a, %b : !moore.int
+    c = a - b;
     // CHECK: moore.mul %a, %b : !moore.int
     c = a * b;
+    // CHECK: moore.div %d, %e : !moore.integer
+    f = d / e;
+    // CHECK: moore.mod %d, %e : !moore.integer
+    f = d % e;
+
+    // CHECK: moore.and %a, %b : !moore.int
+    c = a & b;
+    // CHECK: moore.or %a, %b : !moore.int
+    c = a | b;
+    // CHECK: moore.xor %a, %b : !moore.int
+    c = a ^ b;
+    // CHECK: [[TMP:%.+]] = moore.xor %a, %b : !moore.int
+    // CHECK: moore.not [[TMP]] : !moore.int
+    c = a ~^ b;
+    // CHECK: [[TMP:%.+]] = moore.xor %a, %b : !moore.int
+    // CHECK: moore.not [[TMP]] : !moore.int
+    c = a ^~ b;
+
+    // CHECK: moore.eq %a, %b : !moore.int -> !moore.bit
+    x = a == b;
+    // CHECK: moore.eq %d, %e : !moore.integer -> !moore.logic
+    y = d == e;
+    // CHECK: moore.ne %a, %b : !moore.int -> !moore.bit
+    x = a != b ;
+    // CHECK: moore.case_eq %a, %b : !moore.int
+    x = a === b;
+    // CHECK: moore.case_ne %a, %b : !moore.int
+    x = a !== b;
+    // CHECK: moore.wildcard_eq %a, %b : !moore.int -> !moore.bit
+    x = a ==? b;
+    // CHECK: [[TMP:%.+]] = moore.conversion %a : !moore.int -> !moore.integer
+    // CHECK: moore.wildcard_eq [[TMP]], %d : !moore.integer -> !moore.logic
+    y = a ==? d;
+    // CHECK: [[TMP:%.+]] = moore.conversion %b : !moore.int -> !moore.integer
+    // CHECK: moore.wildcard_eq %d, [[TMP]] : !moore.integer -> !moore.logic
+    y = d ==? b;
+    // CHECK: moore.wildcard_eq %d, %e : !moore.integer -> !moore.logic
+    y = d ==? e;
+    // CHECK: moore.wildcard_ne %a, %b : !moore.int -> !moore.bit
+    x = a !=? b;
+
+    // CHECK: moore.ge %a, %b : !moore.int -> !moore.bit
+    c = a >= b;
+    // CHECK: moore.gt %a, %b : !moore.int -> !moore.bit
+    c = a > b;
+    // CHECK: moore.le %a, %b : !moore.int -> !moore.bit
+    c = a <= b;
+    // CHECK: moore.lt %a, %b : !moore.int -> !moore.bit
+    c = a < b;
 
     // CHECK: moore.mir.logic and %a, %b : !moore.int, !moore.int
     c = a && b;
@@ -113,32 +171,6 @@ module Expressions();
     c = a -> b;
     // CHECK: moore.mir.logic or %a, %b : !moore.int, !moore.int
     c = a || b;
-
-    // CHECK: moore.mir.binBitwise and %a, %b : !moore.int, !moore.int
-    c = a & b;
-    // CHECK: moore.mir.binBitwise or %a, %b : !moore.int, !moore.int
-    c = a | b;
-    // CHECK: moore.mir.binBitwise xor %a, %b : !moore.int, !moore.int
-    c = a ^ b;
-    // CHECK: moore.mir.binBitwise xnor %a, %b : !moore.int, !moore.int
-    c = a ~^ b;
-
-    // CHECK: moore.mir.eq case %a, %b : !moore.int, !moore.int
-    c = a === b;
-    // CHECK: moore.mir.ne case %a, %b : !moore.int, !moore.int
-    c = a !== b;
-    // CHECK: moore.mir.eq %a, %b : !moore.int, !moore.int
-    c = a == b;
-    // CHECK: moore.mir.ne %a, %b : !moore.int, !moore.int
-    c = a != b ;
-    // CHECK: moore.mir.icmp gte %a, %b : !moore.int, !moore.int
-    c = a >= b;
-    // CHECK: moore.mir.icmp gt %a, %b : !moore.int, !moore.int
-    c = a > b;
-    // CHECK: moore.mir.icmp lte %a, %b : !moore.int, !moore.int
-    c = a <= b;
-    // CHECK: moore.mir.icmp lt %a, %b : !moore.int, !moore.int
-    c = a < b;
 
     // CHECK: moore.mir.shl %a, %b : !moore.int, !moore.int
     c = a << b;
