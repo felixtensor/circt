@@ -353,12 +353,3 @@ def BitwiseOp : MIROp<"binBitwise", [
     $bitwise $lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs)
   }];
 }
-
-
-//===---------------------------------------------------------------------===//
-// Arithmetic Operations 
-//===---------------------------------------------------------------------===//
-
-// Arithmetic and Logical Operations.
-def AddOp : UTVariadicOp<"add", [Commutative]>;
-def MulOp : UTVariadicOp<"mul", [Commutative]>;

@@ -9,8 +9,9 @@
 #ifndef CIRCT_DIALECT_MOORE_MOOREOPS
 #define CIRCT_DIALECT_MOORE_MOOREOPS
 
-include "mlir/IR/RegionKindInterface.td"
 include "circt/Dialect/Moore/MooreTypes.td"
+include "mlir/IR/RegionKindInterface.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 
 //===----------------------------------------------------------------------===//
 // Structure
@@ -226,5 +227,137 @@ def ConversionOp : MooreOp<"conversion", [Pure]> {
     $input attr-dict `:` type($input) `->` type($result)
   }];
 }
+
+def NegOp : MooreOp<"neg", [Pure, SameOperandsAndResultType]> {
+  let summary = "Arithmetic negation";
+  let description = [{
+    Negate a value to its two's complement form. If any bit in the input is Z or
+    X, all bits in the result are set to X.
+
+    See IEEE 1800-2017 § 11.4.3 "Arithmetic operators".
+  }];
+  let arguments = (ins SimpleBitVectorType:$input);
+  let results = (outs SimpleBitVectorType:$result);
+  let assemblyFormat = [{
+    $input attr-dict `:` type($input)
+  }];
+}
+
+def NotOp : MooreOp<"not", [Pure, SameOperandsAndResultType]> {
+  let summary = "Bitwise unary negation";
+  let description = [{
+    Applies the boolean NOT operation to each bit in the input. Corresponds to
+    the `~` operator, as well as the negation in the `~&`, `~|`, `^~`, and `~^`
+    reduction operators.
+
+    See IEEE 1800-2017 § 11.4.8 "Bitwise operators".
+
+    | Input | Result |
+    |-------|--------|
+    | 0     | 1      |
+    | 1     | 0      |
+    | X     | X      |
+    | Z     | X      |
+  }];
+  let arguments = (ins SimpleBitVectorType:$input);
+  let results = (outs SimpleBitVectorType:$result);
+  let assemblyFormat = [{
+    $input attr-dict `:` type($input)
+  }];
+}
+
+class ReduceOpBase<string mnemonic, string operatorName> : MooreOp<mnemonic, [
+  Pure,
+  TypesMatchWith<"result is single bit of input", "input", "result", [{
+    $_self.cast<UnpackedType>()
+      .getSimpleBitVector()
+      .toSingleBit()
+      .getType($_self.getContext())
+  }]>
+]> {
+  let arguments = (ins SimpleBitVectorType:$input);
+  let results = (outs SingleBitType:$result);
+  let assemblyFormat = [{
+    $input attr-dict `:` type($input) `->` type($result)
+  }];
+  let summary = !subst("$op", operatorName, "Reduction $op operator");
+  let description = !subst("$op", operatorName, [{
+    Reduces all bits in the input to a single result bit by iteratively applying
+    the boolean $op operator. If the input has only a single bit, that bit is
+    returned.
+
+    See IEEE 1800-2017 § 11.4.9 "Reduction operators". See the corresponding
+    `and`, `or`, and `xor` operations for the truth table.
+  }]);
+}
+
+def ReduceAndOp : ReduceOpBase<"reduce_and", "AND">;
+def ReduceOrOp : ReduceOpBase<"reduce_or", "OR">;
+def ReduceXorOp : ReduceOpBase<"reduce_xor", "XOR">;
+
+def BoolCastOp : MooreOp<"bool_cast", [
+  Pure,
+  TypesMatchWith<"result is single bit matching input domain",
+    "input", "result", [{
+    IntType::get($_self.getContext(),
+      IntType::getAtomForDomain($_self.cast<UnpackedType>().getDomain()))
+  }]>
+]> {
+  let summary = "Cast a value to a single bit boolean";
+  let description = [{
+    Convert a nonzero or true value into 1, a zero or false value into 0, and
+    any value containing Z or X bits into a X. This conversion is useful in
+    combination with the logical and, or, implication, equivalence, and negation
+    operators.
+
+    See IEEE 1800-2017 § 11.4.7 "Logical operators".
+  }];
+  let arguments = (ins UnpackedType:$input);
+  let results = (outs SingleBitType:$result);
+  let assemblyFormat = [{
+    $input attr-dict `:` type($input) `->` type($result)
+  }];
+}
+
+
+class BinaryOpBase<string mnemonic, list<Trait> traits = []> :
+    MooreOp<mnemonic, traits # [Pure, SameOperandsAndResultType]> {
+  let arguments = (ins SimpleBitVectorType:$lhs, SimpleBitVectorType:$rhs);
+  let results = (outs SimpleBitVectorType:$result);
+  let assemblyFormat = [{
+    $lhs `,` $rhs attr-dict `:` type($result)
+  }];
+}
+
+def AddOp : BinaryOpBase<"add", [Commutative]> {
+  let summary = "Addition";
+  let description = [{
+    Add the operands. If any bit in the two operands is Z or X, all bits in the
+    result are set to X.
+
+    See IEEE 1800-2017 § 11.4.3 "Arithmetic operators".
+  }];
+}
+
+def SubOp : BinaryOpBase<"sub"> {
+  let summary = "Subtraction";
+  let description = [{
+    Subtract the right-hand side from the left-hand side operand. If any bit in
+    the two operands is Z or X, all bits in the result are set to X.
+
+    See IEEE 1800-2017 § 11.4.3 "Arithmetic operators".
+  }];
+}
+
+def MulOp : BinaryOpBase<"mul", [Commutative]> {
+  let summary = "Multiplication";
+  let description = [{
+    Multiply the operands. If any bit in the two operands is Z or X, all bits in
+    the result are set to X.
+
+    See IEEE 1800-2017 § 11.4.3 "Arithmetic operators".
+  }];
+}
+
 
 #endif // CIRCT_DIALECT_MOORE_MOOREOPS
