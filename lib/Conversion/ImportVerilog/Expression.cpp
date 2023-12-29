@@ -25,6 +25,37 @@ struct ExprVisitor {
   Location loc;
   OpBuilder &builder;
 
+  /// Helper function to convert a value to its simple bit vector
+  /// representation, if it has one. Otherwise returns null.
+  Value convertToSimpleBitVector(Value value) {
+    if (!value)
+      return {};
+    if (auto type = dyn_cast_or_null<moore::UnpackedType>(value.getType())) {
+      if (type.isSimpleBitVector())
+        return value;
+      if (auto sbvt = type.castToSimpleBitVectorOrNull())
+        return builder.create<moore::ConversionOp>(
+            loc, sbvt.getType(builder.getContext()), value);
+    }
+    mlir::emitError(loc, "expression of type ")
+        << value.getType() << " cannot be cast to a simple bit vector";
+    return {};
+  }
+
+  /// Helper function to convert a value to its "truthy" boolean value.
+  Value convertToBool(Value value) {
+    if (!value)
+      return {};
+    if (auto type = dyn_cast_or_null<moore::IntType>(value.getType()))
+      if (type.getBitSize() == 1)
+        return value;
+    if (auto type = dyn_cast_or_null<moore::UnpackedType>(value.getType()))
+      return builder.create<moore::BoolCastOp>(loc, value);
+    mlir::emitError(loc, "expression of type ")
+        << value.getType() << " cannot be cast to a boolean";
+    return {};
+  }
+
   Value visit(const slang::ast::NamedValueExpression &expr) {
     // TODO: This needs something more robust. Slang should have resolved names
     // already. Better use those pointers instead of names.
@@ -58,46 +89,87 @@ struct ExprVisitor {
     return lhs;
   }
 
+  template <class ConcreteOp>
+  Value createReduction(Value arg, bool invert) {
+    arg = convertToSimpleBitVector(arg);
+    if (!arg)
+      return {};
+    Value result = builder.create<ConcreteOp>(loc, arg);
+    if (invert)
+      result = builder.create<moore::NotOp>(loc, result);
+    return result;
+  }
+
+  Value createIncrement(Value arg, bool isInc, bool isPost) {
+    auto preValue = convertToSimpleBitVector(arg);
+    if (!preValue)
+      return {};
+    auto sbvt =
+        cast<moore::UnpackedType>(preValue.getType()).getSimpleBitVector();
+    auto one = builder.create<moore::ConstantOp>(loc, preValue.getType(),
+                                                 APInt(sbvt.size, 1));
+    auto postValue =
+        isInc ? builder.create<moore::AddOp>(loc, preValue, one).getResult()
+              : builder.create<moore::SubOp>(loc, preValue, one).getResult();
+    builder.create<moore::BPAssignOp>(loc, arg, postValue);
+    return isPost ? preValue : postValue;
+  }
+
   Value visit(const slang::ast::UnaryExpression &expr) {
     auto arg = context.convertExpression(expr.operand());
-
-    switch (expr.op) {
-    case slang::ast::UnaryOperator::Plus:
-      return builder.create<moore::UnaryOp>(loc, moore::Unary::Plus, arg);
-    case slang::ast::UnaryOperator::Minus:
-      return builder.create<moore::UnaryOp>(loc, moore::Unary::Minus, arg);
-    case slang::ast::UnaryOperator::BitwiseNot:
-      return builder.create<moore::ReductionOp>(
-          loc, moore::Reduction::BitwiseNot, arg);
-    case slang::ast::UnaryOperator::BitwiseAnd:
-      return builder.create<moore::ReductionOp>(
-          loc, moore::Reduction::BitwiseAnd, arg);
-    case slang::ast::UnaryOperator::BitwiseOr:
-      return builder.create<moore::ReductionOp>(
-          loc, moore::Reduction::BitwiseOr, arg);
-    case slang::ast::UnaryOperator::BitwiseXor:
-      return builder.create<moore::ReductionOp>(
-          loc, moore::Reduction::BitwiseXor, arg);
-    case slang::ast::UnaryOperator::BitwiseNand:
-      return builder.create<moore::ReductionOp>(
-          loc, moore::Reduction::BitwiseNand, arg);
-    case slang::ast::UnaryOperator::BitwiseNor:
-      return builder.create<moore::ReductionOp>(
-          loc, moore::Reduction::BitwiseNor, arg);
-    case slang::ast::UnaryOperator::BitwiseXnor:
-      return builder.create<moore::ReductionOp>(
-          loc, moore::Reduction::BitwiseXnor, arg);
-    case slang::ast::UnaryOperator::LogicalNot:
-      return builder.create<moore::UnaryOp>(loc, moore::Unary::LogicalNot, arg);
-    case slang::ast::UnaryOperator::Preincrement:
-    case slang::ast::UnaryOperator::Predecrement:
-    case slang::ast::UnaryOperator::Postincrement:
-    case slang::ast::UnaryOperator::Postdecrement:
-
-    default:
-      mlir::emitError(loc, "unsupported unary operator");
+    if (!arg)
       return {};
+
+    using slang::ast::UnaryOperator;
+    switch (expr.op) {
+      // `+a` is simply `a`, but converted to a simple bit vector type since
+      // this is technically an arithmetic operation.
+    case UnaryOperator::Plus:
+      return convertToSimpleBitVector(arg);
+
+    case UnaryOperator::Minus:
+      arg = convertToSimpleBitVector(arg);
+      if (!arg)
+        return {};
+      return builder.create<moore::NegOp>(loc, arg);
+
+    case UnaryOperator::BitwiseNot:
+      arg = convertToSimpleBitVector(arg);
+      if (!arg)
+        return {};
+      return builder.create<moore::NotOp>(loc, arg);
+
+    case UnaryOperator::BitwiseAnd:
+      return createReduction<moore::ReduceAndOp>(arg, false);
+    case UnaryOperator::BitwiseOr:
+      return createReduction<moore::ReduceOrOp>(arg, false);
+    case UnaryOperator::BitwiseXor:
+      return createReduction<moore::ReduceXorOp>(arg, false);
+    case UnaryOperator::BitwiseNand:
+      return createReduction<moore::ReduceAndOp>(arg, true);
+    case UnaryOperator::BitwiseNor:
+      return createReduction<moore::ReduceOrOp>(arg, true);
+    case UnaryOperator::BitwiseXnor:
+      return createReduction<moore::ReduceXorOp>(arg, true);
+
+    case UnaryOperator::LogicalNot:
+      arg = convertToBool(arg);
+      if (!arg)
+        return {};
+      return builder.create<moore::NotOp>(loc, arg);
+
+    case UnaryOperator::Preincrement:
+      return createIncrement(arg, true, false);
+    case UnaryOperator::Predecrement:
+      return createIncrement(arg, false, false);
+    case UnaryOperator::Postincrement:
+      return createIncrement(arg, true, true);
+    case UnaryOperator::Postdecrement:
+      return createIncrement(arg, false, true);
     }
+
+    mlir::emitError(loc, "unsupported unary operator");
+    return {};
   }
 
   Value visit(const slang::ast::BinaryExpression &expr) {
@@ -106,91 +178,91 @@ struct ExprVisitor {
     if (!lhs || !rhs)
       return {};
 
+    using slang::ast::BinaryOperator;
     switch (expr.op) {
-    case slang::ast::BinaryOperator::Add:
+    case BinaryOperator::Add:
       return builder.create<moore::AddOp>(loc, lhs, rhs);
-    case slang::ast::BinaryOperator::Subtract:
+    case BinaryOperator::Subtract:
       mlir::emitError(loc, "unsupported binary operator: subtract");
       return {};
-    case slang::ast::BinaryOperator::Multiply:
+    case BinaryOperator::Multiply:
       return builder.create<moore::MulOp>(loc, lhs, rhs);
-    case slang::ast::BinaryOperator::Divide:
+    case BinaryOperator::Divide:
       mlir::emitError(loc, "unsupported binary operator: divide");
       return {};
-    case slang::ast::BinaryOperator::Mod:
+    case BinaryOperator::Mod:
       mlir::emitError(loc, "unsupported binary operator: mod");
       return {};
-    case slang::ast::BinaryOperator::BinaryAnd:
+    case BinaryOperator::BinaryAnd:
       return builder.create<moore::BitwiseOp>(loc, moore::Bitwise::BinaryAnd,
                                               lhs, rhs);
-    case slang::ast::BinaryOperator::BinaryOr:
+    case BinaryOperator::BinaryOr:
       return builder.create<moore::BitwiseOp>(loc, moore::Bitwise::BinaryOr,
                                               lhs, rhs);
-    case slang::ast::BinaryOperator::BinaryXor:
+    case BinaryOperator::BinaryXor:
       return builder.create<moore::BitwiseOp>(loc, moore::Bitwise::BinaryXor,
                                               lhs, rhs);
-    case slang::ast::BinaryOperator::BinaryXnor:
+    case BinaryOperator::BinaryXnor:
       return builder.create<moore::BitwiseOp>(loc, moore::Bitwise::BinaryXnor,
                                               lhs, rhs);
-    case slang::ast::BinaryOperator::Equality:
+    case BinaryOperator::Equality:
       return builder.create<moore::EqualityOp>(loc, lhs, rhs);
-    case slang::ast::BinaryOperator::Inequality:
+    case BinaryOperator::Inequality:
       return builder.create<moore::InEqualityOp>(loc, lhs, rhs);
-    case slang::ast::BinaryOperator::CaseEquality:
+    case BinaryOperator::CaseEquality:
       return builder.create<moore::EqualityOp>(loc, lhs, rhs,
                                                builder.getUnitAttr());
-    case slang::ast::BinaryOperator::CaseInequality:
+    case BinaryOperator::CaseInequality:
       return builder.create<moore::InEqualityOp>(loc, lhs, rhs,
                                                  builder.getUnitAttr());
-    case slang::ast::BinaryOperator::GreaterThanEqual:
+    case BinaryOperator::GreaterThanEqual:
       // TODO: I think should integrate these four relation operators into one
       // builder.create. But I failed, the error is `resultNumber <
       // getNumResults() && ... ` from Operation.h:983.
       return builder.create<moore::RelationalOp>(
           loc, moore::Relation::GreaterThanEqual, lhs, rhs);
-    case slang::ast::BinaryOperator::GreaterThan:
+    case BinaryOperator::GreaterThan:
       return builder.create<moore::RelationalOp>(
           loc, moore::Relation::GreaterThan, lhs, rhs);
-    case slang::ast::BinaryOperator::LessThanEqual:
+    case BinaryOperator::LessThanEqual:
       return builder.create<moore::RelationalOp>(
           loc, moore::Relation::LessThanEqual, lhs, rhs);
-    case slang::ast::BinaryOperator::LessThan:
+    case BinaryOperator::LessThan:
       return builder.create<moore::RelationalOp>(loc, moore::Relation::LessThan,
                                                  lhs, rhs);
-    case slang::ast::BinaryOperator::WildcardEquality:
+    case BinaryOperator::WildcardEquality:
       mlir::emitError(loc, "unsupported binary operator: wildcard equality");
       return {};
-    case slang::ast::BinaryOperator::WildcardInequality:
+    case BinaryOperator::WildcardInequality:
       mlir::emitError(loc, "unsupported binary operator: wildcard inequality");
       return {};
-    case slang::ast::BinaryOperator::LogicalAnd:
+    case BinaryOperator::LogicalAnd:
       return builder.create<moore::LogicalOp>(loc, moore::Logic::LogicalAnd,
                                               lhs, rhs);
-    case slang::ast::BinaryOperator::LogicalOr:
+    case BinaryOperator::LogicalOr:
       return builder.create<moore::LogicalOp>(loc, moore::Logic::LogicalOr, lhs,
                                               rhs);
-    case slang::ast::BinaryOperator::LogicalImplication:
+    case BinaryOperator::LogicalImplication:
       return builder.create<moore::LogicalOp>(
           loc, moore::Logic::LogicalImplication, lhs, rhs);
-    case slang::ast::BinaryOperator::LogicalEquivalence:
+    case BinaryOperator::LogicalEquivalence:
       return builder.create<moore::LogicalOp>(
           loc, moore::Logic::LogicalEquivalence, lhs, rhs);
-    case slang::ast::BinaryOperator::LogicalShiftLeft:
+    case BinaryOperator::LogicalShiftLeft:
       return builder.create<moore::ShlOp>(loc, lhs, rhs);
-    case slang::ast::BinaryOperator::LogicalShiftRight:
+    case BinaryOperator::LogicalShiftRight:
       return builder.create<moore::ShrOp>(loc, lhs, rhs);
-    case slang::ast::BinaryOperator::ArithmeticShiftLeft:
+    case BinaryOperator::ArithmeticShiftLeft:
       return builder.create<moore::ShlOp>(loc, lhs, rhs, builder.getUnitAttr());
-    case slang::ast::BinaryOperator::ArithmeticShiftRight:
+    case BinaryOperator::ArithmeticShiftRight:
       return builder.create<moore::ShrOp>(loc, lhs, rhs, builder.getUnitAttr());
-    case slang::ast::BinaryOperator::Power:
+    case BinaryOperator::Power:
       mlir::emitError(loc, "unsupported binary operator: power");
       return {};
-
-    default:
-      mlir::emitError(loc, "unsupported binary operator");
-      return {};
     }
+
+    mlir::emitError(loc, "unsupported binary operator");
+    return {};
   }
 
   Value visit(const slang::ast::IntegerLiteral &expr) {

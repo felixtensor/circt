@@ -30,6 +30,12 @@ def SimpleBitVectorType : MooreType<CPred<[{
     $_self.cast<moore::UnpackedType>().isSimpleBitVector()
   }]>, "simple bit vector type", "moore::UnpackedType">;
 
+/// A single bit type.
+def SingleBitType : MooreType<CPred<[{
+    $_self.isa<moore::IntType>() &&
+    $_self.cast<moore::IntType>().getBitSize() == 1
+  }]>, "single bit type", "moore::IntType">;
+
 //===----------------------------------------------------------------------===//
 // Integer atom types
 //===----------------------------------------------------------------------===//
