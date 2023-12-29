@@ -76,6 +76,9 @@ struct ExprVisitor {
     if (!lhs || !rhs)
       return {};
 
+    if (lhs.getType() != rhs.getType())
+      rhs = builder.create<moore::ConversionOp>(loc, lhs.getType(), rhs);
+
     if (expr.isNonBlocking())
       builder.create<moore::PAssignOp>(loc, lhs, rhs);
     else if (expr.syntax->parent->kind ==
@@ -172,6 +175,15 @@ struct ExprVisitor {
     return {};
   }
 
+  template <class ConcreteOp>
+  Value createBinary(Value lhs, Value rhs) {
+    lhs = convertToSimpleBitVector(lhs);
+    rhs = convertToSimpleBitVector(rhs);
+    if (!lhs || !rhs)
+      return {};
+    return builder.create<ConcreteOp>(loc, lhs, rhs);
+  }
+
   Value visit(const slang::ast::BinaryExpression &expr) {
     auto lhs = context.convertExpression(expr.left());
     auto rhs = context.convertExpression(expr.right());
@@ -181,61 +193,51 @@ struct ExprVisitor {
     using slang::ast::BinaryOperator;
     switch (expr.op) {
     case BinaryOperator::Add:
-      return builder.create<moore::AddOp>(loc, lhs, rhs);
+      return createBinary<moore::AddOp>(lhs, rhs);
     case BinaryOperator::Subtract:
-      mlir::emitError(loc, "unsupported binary operator: subtract");
-      return {};
+      return createBinary<moore::SubOp>(lhs, rhs);
     case BinaryOperator::Multiply:
-      return builder.create<moore::MulOp>(loc, lhs, rhs);
+      return createBinary<moore::MulOp>(lhs, rhs);
     case BinaryOperator::Divide:
-      mlir::emitError(loc, "unsupported binary operator: divide");
-      return {};
+      return createBinary<moore::DivOp>(lhs, rhs);
     case BinaryOperator::Mod:
-      mlir::emitError(loc, "unsupported binary operator: mod");
-      return {};
+      return createBinary<moore::ModOp>(lhs, rhs);
+
     case BinaryOperator::BinaryAnd:
-      return builder.create<moore::BitwiseOp>(loc, moore::Bitwise::BinaryAnd,
-                                              lhs, rhs);
+      return createBinary<moore::AndOp>(lhs, rhs);
     case BinaryOperator::BinaryOr:
-      return builder.create<moore::BitwiseOp>(loc, moore::Bitwise::BinaryOr,
-                                              lhs, rhs);
+      return createBinary<moore::OrOp>(lhs, rhs);
     case BinaryOperator::BinaryXor:
-      return builder.create<moore::BitwiseOp>(loc, moore::Bitwise::BinaryXor,
-                                              lhs, rhs);
-    case BinaryOperator::BinaryXnor:
-      return builder.create<moore::BitwiseOp>(loc, moore::Bitwise::BinaryXnor,
-                                              lhs, rhs);
+      return createBinary<moore::XorOp>(lhs, rhs);
+    case BinaryOperator::BinaryXnor: {
+      auto result = createBinary<moore::XorOp>(lhs, rhs);
+      if (!result)
+        return {};
+      return builder.create<moore::NotOp>(loc, result);
+    }
+
     case BinaryOperator::Equality:
-      return builder.create<moore::EqualityOp>(loc, lhs, rhs);
+      return createBinary<moore::EqOp>(lhs, rhs);
     case BinaryOperator::Inequality:
-      return builder.create<moore::InEqualityOp>(loc, lhs, rhs);
+      return createBinary<moore::NeOp>(lhs, rhs);
     case BinaryOperator::CaseEquality:
-      return builder.create<moore::EqualityOp>(loc, lhs, rhs,
-                                               builder.getUnitAttr());
+      return createBinary<moore::CaseEqOp>(lhs, rhs);
     case BinaryOperator::CaseInequality:
-      return builder.create<moore::InEqualityOp>(loc, lhs, rhs,
-                                                 builder.getUnitAttr());
-    case BinaryOperator::GreaterThanEqual:
-      // TODO: I think should integrate these four relation operators into one
-      // builder.create. But I failed, the error is `resultNumber <
-      // getNumResults() && ... ` from Operation.h:983.
-      return builder.create<moore::RelationalOp>(
-          loc, moore::Relation::GreaterThanEqual, lhs, rhs);
-    case BinaryOperator::GreaterThan:
-      return builder.create<moore::RelationalOp>(
-          loc, moore::Relation::GreaterThan, lhs, rhs);
-    case BinaryOperator::LessThanEqual:
-      return builder.create<moore::RelationalOp>(
-          loc, moore::Relation::LessThanEqual, lhs, rhs);
-    case BinaryOperator::LessThan:
-      return builder.create<moore::RelationalOp>(loc, moore::Relation::LessThan,
-                                                 lhs, rhs);
+      return createBinary<moore::CaseNeOp>(lhs, rhs);
     case BinaryOperator::WildcardEquality:
-      mlir::emitError(loc, "unsupported binary operator: wildcard equality");
-      return {};
+      return createBinary<moore::WildcardEqOp>(lhs, rhs);
     case BinaryOperator::WildcardInequality:
-      mlir::emitError(loc, "unsupported binary operator: wildcard inequality");
-      return {};
+      return createBinary<moore::WildcardNeOp>(lhs, rhs);
+
+    case BinaryOperator::GreaterThanEqual:
+      return createBinary<moore::GeOp>(lhs, rhs);
+    case BinaryOperator::GreaterThan:
+      return createBinary<moore::GtOp>(lhs, rhs);
+    case BinaryOperator::LessThanEqual:
+      return createBinary<moore::LeOp>(lhs, rhs);
+    case BinaryOperator::LessThan:
+      return createBinary<moore::LtOp>(lhs, rhs);
+
     case BinaryOperator::LogicalAnd:
       return builder.create<moore::LogicalOp>(loc, moore::Logic::LogicalAnd,
                                               lhs, rhs);
