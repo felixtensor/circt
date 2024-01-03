@@ -16,6 +16,7 @@
 #include "circt/Dialect/HW/HWOps.h"
 #include "circt/Dialect/LLHD/IR/LLHDOps.h"
 #include "circt/Dialect/Moore/MooreOps.h"
+#include "circt/Dialect/Seq/SeqOps.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinDialect.h"
@@ -272,22 +273,13 @@ static void populateTypeConversion(TypeConverter &typeConverter) {
   typeConverter.addConversion([](mlir::IntegerType type) { return type; });
 }
 
-static void populateOpConversion(RewritePatternSet &patterns,
-                                 TypeConverter &typeConverter) {
-  auto *context = patterns.getContext();
-  // clang-format off
-  patterns.add<
-    ConstantOpConv,
-    ConcatOpConversion,
-    ReturnOpConversion,
-    CondBranchOpConversion,
-    BranchOpConversion,
-    CallOpConversion,
-    ShlOpConversion,
-    ShrOpConversion,
-    UnrealizedConversionCastConversion
-  >(typeConverter, context);
-  // clang-format on
+void circt::populateMooreToCoreConversionPatterns(TypeConverter &typeConverter,
+                                                  RewritePatternSet &patterns) {
+  patterns.add<ConstantOpConv, ConcatOpConversion, ReturnOpConversion,
+               CondBranchOpConversion, BranchOpConversion, CallOpConversion,
+               ShlOpConversion, ShrOpConversion,
+               UnrealizedConversionCastConversion>(typeConverter,
+                                                   patterns.getContext());
   mlir::populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(
       patterns, typeConverter);
 }
@@ -317,7 +309,7 @@ void MooreToCorePass::runOnOperation() {
   RewritePatternSet patterns(&context);
   populateLegality(target);
   populateTypeConversion(typeConverter);
-  populateOpConversion(patterns, typeConverter);
+  populateMooreToCoreConversionPatterns(typeConverter, patterns);
 
   if (failed(applyFullConversion(module, target, std::move(patterns))))
     signalPassFailure();
