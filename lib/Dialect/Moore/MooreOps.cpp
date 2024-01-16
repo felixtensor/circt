@@ -78,6 +78,12 @@ ParseResult ConstantOp::parse(OpAsmParser &parser, OperationState &result) {
     return parser.emitError(parser.getCurrentLocation(),
                             "expected simple bit vector type");
 
+  if (sbvt.size != value.getBitWidth()) {
+    if (sbvt.isSigned())
+      value = value.sextOrTrunc(sbvt.size);
+    value = value.zextOrTrunc(sbvt.size);
+  }
+
   auto attrType = IntegerType::get(parser.getContext(), sbvt.size);
   auto attrValue = IntegerAttr::get(attrType, value);
 
