@@ -19,6 +19,10 @@
 
 namespace circt {
 
+/// Get the Moore to HW/Comb/Seq conversion patterns.
+void populateMooreToCoreConversionPatterns(TypeConverter &typeConverter,
+                                           RewritePatternSet &patterns);
+
 /// Create an Moore to Comb/HW/LLHD conversion pass.
 std::unique_ptr<OperationPass<ModuleOp>> createConvertMooreToCorePass();
 
