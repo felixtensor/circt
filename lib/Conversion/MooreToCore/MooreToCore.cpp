@@ -390,8 +390,8 @@ static void populateTypeConversion(TypeConverter &typeConverter) {
   typeConverter.addConversion([](mlir::IntegerType type) { return type; });
 }
 
-static void populateOpConversion(RewritePatternSet &patterns,
-                                 TypeConverter &typeConverter) {
+void circt::populateMooreToCoreConversionPatterns(TypeConverter &typeConverter,
+                                                  RewritePatternSet &patterns) {
   auto *context = patterns.getContext();
 
   patterns.add<
