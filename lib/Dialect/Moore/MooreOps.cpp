@@ -13,6 +13,7 @@
 #include "circt/Dialect/Moore/MooreOps.h"
 #include "circt/Support/CustomDirectiveImpl.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/Support/LogicalResult.h"
 
 using namespace circt;
 using namespace circt::moore;
@@ -34,6 +35,13 @@ LogicalResult InstanceOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
            << getModuleName() << "' isn't a module";
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// PortOp
+//===----------------------------------------------------------------------===//
+void PortOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+  setNameFn(getResult(), getName());
 }
 
 //===----------------------------------------------------------------------===//

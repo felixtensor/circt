@@ -17,8 +17,10 @@
 #include "slang/ast/ASTVisitor.h"
 #include "slang/ast/Compilation.h"
 #include "slang/ast/Definition.h"
+#include "slang/ast/SemanticFacts.h"
 #include "slang/syntax/SyntaxTree.h"
 #include "slang/syntax/SyntaxVisitor.h"
+#include "slang/text/SourceLocation.h"
 #include "slang/text/SourceManager.h"
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/Support/Debug.h"
@@ -101,6 +103,11 @@ struct Context {
   /// scope is destroyed and the mappings created in this scope are dropped.
   llvm::ScopedHashTable<StringRef, mlir::Value> varSymbolTable;
   using SymbolTableScopeT = llvm::ScopedHashTableScope<StringRef, mlir::Value>;
+
+  /// Mapping port address with its direction that is convenient to sort ports
+  /// of different types in handling instance logic.
+  DenseMap<const slang::SourceLocation *, slang::ast::ArgumentDirection> pInfo;
+
   /// How we have lowered modules to MLIR.
   DenseMap<const slang::ast::InstanceBodySymbol *, Operation *> moduleOps;
   /// A list of modules for which the header has been created, but the body has

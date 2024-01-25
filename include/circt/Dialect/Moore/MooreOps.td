@@ -10,6 +10,7 @@
 #define CIRCT_DIALECT_MOORE_MOOREOPS
 
 include "circt/Dialect/Moore/MooreTypes.td"
+include "mlir/IR/OpBase.td"
 include "mlir/IR/RegionKindInterface.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 
@@ -41,14 +42,29 @@ def SVModuleOp : MooreOp<"module", [
 }
 
 def InstanceOp : MooreOp<"instance", [
-  DeclareOpInterfaceMethods<SymbolUserOpInterface>
+  AttrSizedOperandSegments,
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
 ]> {
   let summary = "Create an instance of a module";
-
+  let description = [{
+    This represents an instance of a module. The inputs and results are
+    the inputs and results of module. The inputs and results types of the
+    instance must match the specified module type.
+ 
+    Example:
+    ```
+    %0 = moore.instance foo @Foo(in a: !moore.logic, out b: !moore.logic)
+    ```
+  }];
   let arguments = (ins StrAttr:$instanceName,
-                       FlatSymbolRefAttr:$moduleName);
+                       FlatSymbolRefAttr:$moduleName,
+                       Variadic<AnyType>:$inputs,
+                       Variadic<AnyType>:$outputs);
+  let results = (outs);
+
   let assemblyFormat = [{
-    $instanceName $moduleName attr-dict
+    $instanceName $moduleName `(` $inputs `)` `->` `(` $outputs `)` attr-dict `:`
+    functional-type($inputs, $outputs)
   }];
 }
 
@@ -108,13 +124,15 @@ def DirectionAttr: I32EnumAttr<"Direction", "Port direction",
 }
 
 def PortOp : MooreOp<"port", [
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
   RecursiveMemoryEffects
 ]> {
   let summary = "Declare a port";
   let arguments = (ins StrAttr:$name, DirectionAttr:$direction);
-  let results = (outs);
+  let results = (outs UnpackedType:$result);
   let assemblyFormat = [{
-    $direction $name attr-dict
+    `` custom<ImplicitSSAName>($name) $direction attr-dict
+    `:` type($result)
   }];
 }
 
