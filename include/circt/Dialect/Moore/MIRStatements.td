@@ -16,19 +16,6 @@ include "circt/Dialect/Moore/MooreTypes.td"
 // Assignment Statements
 //===----------------------------------------------------------------------===//
 
-def AssignOp : MIROp<"assign", [SameTypeOperands]> {
-  let summary = "Continuous assignment";
-  let description = [{
-    A SystemVerilog assignment statement 'x = y;'.
-    These occur in module scope.  See SV Spec 10.3.2.
-  }];
-  let arguments = (ins UnpackedType:$dest, UnpackedType:$src);
-  let results = (outs);
-  let assemblyFormat = [{
-    $dest `,` $src  attr-dict `:` qualified(type($src))
-  }];
-}
-
 def CAssignOp : MIROp<"cassign", [SameTypeOperands]> {
   let summary = "Continuous assignment";
   let description = [{
