@@ -46,7 +46,7 @@ func.func @UnrealizedConversionCast(%arg0: !moore.byte) -> !moore.shortint {
 }
 
 // CHECK-LABEL: func @Expressions
-func.func @Expressions(%arg0: !moore.bit, %arg1: !moore.logic, %arg2: !moore.packed<range<bit, 5:0>>, %arg3: !moore.packed<range<bit<signed>, 4:0>>) {
+func.func @Expressions(%arg0: !moore.bit, %arg1: !moore.logic, %arg2: !moore.packed<range<bit, 5:0>>, %arg3: !moore.packed<range<bit<signed>, 4:0>>, %arg4: !moore.bit<signed>) {
   // CHECK-NEXT: %0 = comb.concat %arg0, %arg0 : i1, i1
   // CHECK-NEXT: %1 = comb.concat %arg1, %arg1 : i1, i1
   %0 = moore.mir.concat %arg0, %arg0 : (!moore.bit, !moore.bit) -> !moore.packed<range<bit, 1:0>>
@@ -99,32 +99,42 @@ func.func @Expressions(%arg0: !moore.bit, %arg1: !moore.logic, %arg2: !moore.pac
   // CHECK: comb.icmp ule %arg0, %arg0 : i1
   // CHECK: comb.icmp ugt %arg0, %arg0 : i1
   // CHECK: comb.icmp uge %arg0, %arg0 : i1
+  %16 = moore.lt %arg0, %arg0 : !moore.bit -> !moore.bit
+  %17 = moore.le %arg0, %arg0 : !moore.bit -> !moore.bit
+  %18 = moore.gt %arg0, %arg0 : !moore.bit -> !moore.bit
+  %19 = moore.ge %arg0, %arg0 : !moore.bit -> !moore.bit
+
+  // CHECK: comb.icmp slt %arg4, %arg4 : i1
+  // CHECK: comb.icmp sle %arg4, %arg4 : i1
+  // CHECK: comb.icmp sgt %arg4, %arg4 : i1
+  // CHECK: comb.icmp sge %arg4, %arg4 : i1
+  %20 = moore.lt %arg4, %arg4 : !moore.bit<signed> -> !moore.bit
+  %21 = moore.le %arg4, %arg4 : !moore.bit<signed> -> !moore.bit
+  %22 = moore.gt %arg4, %arg4 : !moore.bit<signed> -> !moore.bit
+  %23 = moore.ge %arg4, %arg4 : !moore.bit<signed> -> !moore.bit
+
   // CHECK: comb.icmp eq %arg0, %arg0 : i1
   // CHECK: comb.icmp ne %arg0, %arg0 : i1
   // CHECK: comb.icmp ceq %arg0, %arg0 : i1
   // CHECK: comb.icmp cne %arg0, %arg0 : i1
   // CHECK: comb.icmp weq %arg0, %arg0 : i1
   // CHECK: comb.icmp wne %arg0, %arg0 : i1
-  %16 = moore.lt %arg0, %arg0 : !moore.bit -> !moore.bit
-  %17 = moore.le %arg0, %arg0 : !moore.bit -> !moore.bit
-  %18 = moore.gt %arg0, %arg0 : !moore.bit -> !moore.bit
-  %19 = moore.ge %arg0, %arg0 : !moore.bit -> !moore.bit
-  %20 = moore.eq %arg0, %arg0 : !moore.bit -> !moore.bit
-  %21 = moore.ne %arg0, %arg0 : !moore.bit -> !moore.bit
-  %22 = moore.case_eq %arg0, %arg0 : !moore.bit 
-  %23 = moore.case_ne %arg0, %arg0 : !moore.bit
-  %24 = moore.wildcard_eq %arg0, %arg0 : !moore.bit -> !moore.bit
-  %25 = moore.wildcard_ne %arg0, %arg0 : !moore.bit -> !moore.bit
+  %24 = moore.eq %arg0, %arg0 : !moore.bit -> !moore.bit
+  %25 = moore.ne %arg0, %arg0 : !moore.bit -> !moore.bit
+  %26 = moore.case_eq %arg0, %arg0 : !moore.bit 
+  %27 = moore.case_ne %arg0, %arg0 : !moore.bit
+  %28 = moore.wildcard_eq %arg0, %arg0 : !moore.bit -> !moore.bit
+  %29 = moore.wildcard_ne %arg0, %arg0 : !moore.bit -> !moore.bit
 
   // CHECK: comb.extract %arg2 from 2 : (i6) -> i2
   // CHECK: comb.extract %arg2 from 2 : (i6) -> i1
-  %26 = moore.mir.extract %arg2 from 2 : (!moore.packed<range<bit, 5:0>>) -> !moore.packed<range<bit, 3:2>>
-  %27 = moore.mir.extract %arg2 from 2 : (!moore.packed<range<bit, 5:0>>) -> !moore.bit
+  %30 = moore.mir.extract %arg2 from 2 : (!moore.packed<range<bit, 5:0>>) -> !moore.packed<range<bit, 3:2>>
+  %31 = moore.mir.extract %arg2 from 2 : (!moore.packed<range<bit, 5:0>>) -> !moore.bit
 
   // CHECK: hw.constant 12 : i32
   // CHECK: hw.constant 3 : i6
-  %28 = moore.constant 12 : !moore.int
-  %29 = moore.constant 3 : !moore.packed<range<bit, 5:0>>
+  %32 = moore.constant 12 : !moore.int
+  %33 = moore.constant 3 : !moore.packed<range<bit, 5:0>>
 
   // CHECK-NEXT: return
   return

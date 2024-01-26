@@ -57,11 +57,21 @@ static Value adjustIntegerWidth(OpBuilder &builder, Value value,
   return builder.create<comb::MuxOp>(loc, isZero, lo, max, false);
 }
 
-template <typename ConcreteOp>
-static bool isSignedResultType(ConcreteOp op) {
-  return cast<UnpackedType>(op.getResult().getType())
-      .castToSimpleBitVector()
-      .isSigned();
+static bool isSignedResultType(Operation *op) {
+  return TypeSwitch<Operation *, bool>(op)
+      .template Case<LtOp, LeOp, GtOp, GeOp>([&](auto op) -> bool {
+        return cast<UnpackedType>(op->getOperand(0).getType())
+                   .castToSimpleBitVector()
+                   .isSigned() &&
+               cast<UnpackedType>(op->getOperand(1).getType())
+                   .castToSimpleBitVector()
+                   .isSigned();
+      })
+      .Default([&](auto op) -> bool {
+        return cast<UnpackedType>(op->getResult(0).getType())
+            .castToSimpleBitVector()
+            .isSigned();
+      });
 }
 
 //===----------------------------------------------------------------------===//
@@ -201,6 +211,20 @@ struct ExtractOpConversion : public OpConversionPattern<ExtractOp> {
                          .size;
 
     rewriter.replaceOpWithNewOp<comb::ExtractOp>(op, value, lowBit, width);
+    return success();
+  }
+};
+
+struct ConversionOpConversion : public OpConversionPattern<ConversionOp> {
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(ConversionOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type resultType = typeConverter->convertType(op.getResult().getType());
+    Value amount =
+        adjustIntegerWidth(rewriter, adaptor.getInput(),
+                           resultType.getIntOrFloatBitWidth(), op->getLoc());
+    rewriter.replaceOpWithNewOp<hw::BitcastOp>(op, resultType, amount);
     return success();
   }
 };
@@ -394,21 +418,22 @@ void circt::populateMooreToCoreConversionPatterns(TypeConverter &typeConverter,
                                                   RewritePatternSet &patterns) {
   auto *context = patterns.getContext();
 
-  patterns.add<
-      ConstantOpConv, ConcatOpConversion, ReturnOpConversion,
-      CondBranchOpConversion, BranchOpConversion, CallOpConversion,
-      ShlOpConversion, ShrOpConversion, BinaryOpConversion<AddOp, comb::AddOp>,
-      BinaryOpConversion<SubOp, comb::SubOp>,
-      BinaryOpConversion<MulOp, comb::MulOp>,
-      BinaryOpConversion<AndOp, comb::AndOp>,
-      BinaryOpConversion<OrOp, comb::OrOp>,
-      BinaryOpConversion<XorOp, comb::XorOp>, DivOpConversion, ModOpConversion,
-      ICmpOpConversion<LtOp>, ICmpOpConversion<LeOp>, ICmpOpConversion<GtOp>,
-      ICmpOpConversion<GeOp>, ICmpOpConversion<EqOp>, ICmpOpConversion<NeOp>,
-      ICmpOpConversion<CaseEqOp>, ICmpOpConversion<CaseNeOp>,
-      ICmpOpConversion<WildcardEqOp>, ICmpOpConversion<WildcardNeOp>,
-      ExtractOpConversion, UnrealizedConversionCastConversion>(typeConverter,
-                                                               context);
+  patterns.add<ConcatOpConversion, ConstantOpConv, ConversionOpConversion,
+               ReturnOpConversion, CondBranchOpConversion, BranchOpConversion,
+               CallOpConversion, ShlOpConversion, ShrOpConversion,
+               BinaryOpConversion<AddOp, comb::AddOp>,
+               BinaryOpConversion<SubOp, comb::SubOp>,
+               BinaryOpConversion<MulOp, comb::MulOp>,
+               BinaryOpConversion<AndOp, comb::AndOp>,
+               BinaryOpConversion<OrOp, comb::OrOp>,
+               BinaryOpConversion<XorOp, comb::XorOp>, DivOpConversion,
+               ModOpConversion, ICmpOpConversion<LtOp>, ICmpOpConversion<LeOp>,
+               ICmpOpConversion<GtOp>, ICmpOpConversion<GeOp>,
+               ICmpOpConversion<EqOp>, ICmpOpConversion<NeOp>,
+               ICmpOpConversion<CaseEqOp>, ICmpOpConversion<CaseNeOp>,
+               ICmpOpConversion<WildcardEqOp>, ICmpOpConversion<WildcardNeOp>,
+               ExtractOpConversion, UnrealizedConversionCastConversion>(
+      typeConverter, context);
 
   mlir::populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(
       patterns, typeConverter);
