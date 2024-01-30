@@ -14,6 +14,8 @@
 #ifndef CIRCT_CONVERSION_MOORETOCORE_H
 #define CIRCT_CONVERSION_MOORETOCORE_H
 
+#include "circt/Dialect/HW/HWOps.h"
+#include "circt/Dialect/Moore/MooreOps.h"
 #include "circt/Support/LLVM.h"
 #include <memory>
 
@@ -23,7 +25,7 @@ namespace circt {
 void populateMooreToCoreConversionPatterns(TypeConverter &typeConverter,
                                            RewritePatternSet &patterns);
 
-/// Create an Moore to Comb/HW/LLHD conversion pass.
+/// Create an Moore to HW/Comb/Seq conversion pass.
 std::unique_ptr<OperationPass<ModuleOp>> createConvertMooreToCorePass();
 
 } // namespace circt

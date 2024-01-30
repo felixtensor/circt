@@ -9,7 +9,7 @@ add_circt_conversion_library(CIRCTMooreToCore
 
   LINK_LIBS PUBLIC
   CIRCTMoore
-  CIRCTLLHD
+  CIRCTSeq
   CIRCTHW
   CIRCTComb
   MLIRControlFlowDialect

@@ -468,13 +468,13 @@ def HandshakeToHW : Pass<"lower-handshake-to-hw", "mlir::ModuleOp"> {
 }
 
 //===----------------------------------------------------------------------===//
-// Moore to Comb/Seq
+// Moore to HW/Comb/Seq
 //===----------------------------------------------------------------------===//
 
 def ConvertMooreToCore : Pass<"convert-moore-to-core", "mlir::ModuleOp"> {
   let summary = "Convert Moore to Core";
   let description = [{
-    This pass translates Moore to the core dialects (Comb/Seq).
+    This pass translates Moore to the core dialects (HW/Comb/Seq).
   }];
   let constructor = "circt::createConvertMooreToCorePass()";
   let dependentDialects = ["comb::CombDialect", "hw::HWDialect", "seq::SeqDialect"];
