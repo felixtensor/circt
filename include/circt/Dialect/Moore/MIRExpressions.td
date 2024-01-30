@@ -240,6 +240,7 @@ def LogicalOp : MIROp<"logic", [
 //===----------------------------------------------------------------------===//
 // Vector bit/part select operations
 //===----------------------------------------------------------------------===//
+
 def ExtractOp : MIROp<"extract"> {
   let summary = [{
    Extract a range of bits into a smaller value, 

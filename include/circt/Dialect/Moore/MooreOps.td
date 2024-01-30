@@ -24,7 +24,7 @@ def SVModuleOp : MooreOp<"module", [
   RegionKindInterface,
   NoTerminator
 ]> {
-  let summary = "A systemVerilog module";
+  let summary = "A SystemVerilog module";
   let description = [{
     The `moore.module` operation represents a sv module. It is logically
     equivalent to the module in SystemVerilog.
