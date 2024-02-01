@@ -16,16 +16,18 @@
 #include "circt/Dialect/HW/HWOps.h"
 #include "circt/Dialect/LLHD/IR/LLHDOps.h"
 #include "circt/Dialect/Moore/MooreOps.h"
+#include "circt/Dialect/Moore/MoorePasses.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinDialect.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "llvm/ADT/TypeSwitch.h"
 
 using namespace mlir;
 using namespace circt;
 using namespace moore;
 
+Declaration moore::decl;
 namespace {
 
 /// Returns the passed value if the integer width is already correct.
@@ -56,12 +58,76 @@ static Value adjustIntegerWidth(OpBuilder &builder, Value value,
   return builder.create<comb::MuxOp>(loc, isZero, lo, max, false);
 }
 
-template <typename ConcreteOp>
-static bool isSignedResultType(ConcreteOp op) {
-  return cast<UnpackedType>(op.getResult().getType())
-      .castToSimpleBitVector()
-      .isSigned();
+static bool isSignedResultType(Operation *op) {
+  return TypeSwitch<Operation *, bool>(op)
+      .template Case<LtOp, LeOp, GtOp, GeOp>([&](auto op) -> bool {
+        return cast<UnpackedType>(op->getOperand(0).getType())
+                   .castToSimpleBitVector()
+                   .isSigned() &&
+               cast<UnpackedType>(op->getOperand(1).getType())
+                   .castToSimpleBitVector()
+                   .isSigned();
+      })
+      .Default([&](auto op) -> bool {
+        return cast<UnpackedType>(op->getResult(0).getType())
+            .castToSimpleBitVector()
+            .isSigned();
+      });
 }
+
+struct VariableOpConversion : public OpConversionPattern<VariableOp> {
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(VariableOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    ImplicitLocOpBuilder builder(op->getLoc(), op.getContext());
+    Value value = decl.getValue(op);
+    if (!value) {
+      rewriter.eraseOp(op);
+      return success();
+    }
+
+    Type resultType = typeConverter->convertType(op.getResult().getType());
+    op->moveAfter(value.getDefiningOp());
+    typeConverter->materializeTargetConversion(builder, op->getLoc(),
+                                               resultType, {value});
+    rewriter.replaceOpWithNewOp<hw::WireOp>(op, value, op.getNameAttr());
+    return success();
+  }
+};
+
+struct NetOpConversion : public OpConversionPattern<NetOp> {
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(NetOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    ImplicitLocOpBuilder builder(op->getLoc(), op.getContext());
+    Value value = decl.getValue(op);
+    if (!value) {
+      rewriter.eraseOp(op);
+      return success();
+    }
+
+    Type resultType = typeConverter->convertType(op.getResult().getType());
+    op->moveAfter(value.getDefiningOp());
+    typeConverter->materializeTargetConversion(builder, op->getLoc(),
+                                               resultType, {value});
+    rewriter.replaceOpWithNewOp<hw::WireOp>(op, value, op.getNameAttr());
+    return success();
+  }
+};
+
+struct CAssignOpConversion : public OpConversionPattern<CAssignOp> {
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(CAssignOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    if (decl.getIdentifier(op))
+      rewriter.eraseOp(op);
+    return success();
+  }
+};
 
 //===----------------------------------------------------------------------===//
 // Expression Conversion
@@ -200,6 +266,21 @@ struct ExtractOpConversion : public OpConversionPattern<ExtractOp> {
                          .size;
 
     rewriter.replaceOpWithNewOp<comb::ExtractOp>(op, value, lowBit, width);
+    return success();
+  }
+};
+
+struct ConversionOpConversion : public OpConversionPattern<ConversionOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(ConversionOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type resultType = typeConverter->convertType(op.getResult().getType());
+    Value amount =
+        adjustIntegerWidth(rewriter, adaptor.getInput(),
+                           resultType.getIntOrFloatBitWidth(), op->getLoc());
+    rewriter.replaceOpWithNewOp<hw::BitcastOp>(op, resultType, amount);
     return success();
   }
 };
@@ -385,6 +466,13 @@ static void populateTypeConversion(TypeConverter &typeConverter) {
     return std::nullopt;
   });
 
+  typeConverter.addTargetMaterialization(
+      [&](OpBuilder &builder, Type type, ValueRange values, Location loc) {
+        assert(values.size() == 1);
+        values[0].setType(typeConverter.convertType(type));
+        return values[0];
+      });
+
   // Valid target types.
   typeConverter.addConversion([](mlir::IntegerType type) { return type; });
 }
@@ -420,7 +508,11 @@ static void populateOpConversion(RewritePatternSet &patterns,
     ICmpOpConversion<CaseNeOp>,
     ICmpOpConversion<WildcardEqOp>,
     ICmpOpConversion<WildcardNeOp>,
-    ExtractOpConversion,
+    // ExtractOpConversion,
+    ConversionOpConversion,
+    VariableOpConversion,
+    NetOpConversion,
+    CAssignOpConversion,
     UnrealizedConversionCastConversion
   >(typeConverter, context);
   // clang-format on
@@ -447,6 +539,11 @@ std::unique_ptr<OperationPass<ModuleOp>> circt::createConvertMooreToCorePass() {
 void MooreToCorePass::runOnOperation() {
   MLIRContext &context = getContext();
   ModuleOp module = getOperation();
+
+  auto pm = PassManager::on<ModuleOp>(&context);
+  pm.addPass(moore::createMooreDeclarationsPass());
+  if (failed(pm.run(module)))
+    return signalPassFailure();
 
   ConversionTarget target(context);
   TypeConverter typeConverter;

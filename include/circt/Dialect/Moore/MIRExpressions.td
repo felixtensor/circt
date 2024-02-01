@@ -205,3 +205,23 @@ def LogicalOp : MIROp<"logic", [
     $logic $lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs)
   }];
 }
+
+//===----------------------------------------------------------------------===//
+// Vector bit/part select operations
+//===----------------------------------------------------------------------===//
+def ExtractOp : MIROp<"extract"> {
+  let summary = [{
+   Extract a range of bits into a smaller value, 
+   lowBit specifies the lowest bit included.
+  }];
+  let arguments = (ins UnpackedType:$input, I32Attr:$lowBit);
+  let results = (outs UnpackedType:$result);
+  let assemblyFormat =
+    "$input `from` $lowBit attr-dict `:` functional-type($input, $result)";
+  let builders = [
+    OpBuilder<(ins "Value":$lhs, "int32_t":$lowBit, "int32_t":$bitWidth), [{
+      auto resultType = $_builder.getIntegerType(bitWidth);
+      return build($_builder, $_state, resultType, lhs, lowBit);
+    }]>
+  ];
+}
