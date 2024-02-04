@@ -157,9 +157,6 @@ Context::convertModuleBody(const slang::ast::InstanceBodySymbol *module) {
 
     // Handle instances.
     if (auto *instAst = member.as_if<slang::ast::InstanceSymbol>()) {
-      // llvm::DenseMap<const slang::SourceLocation,
-      // slang::ast::ArgumentDirection>
-      //     pInfoResrved;
       auto *targetModule = convertModuleHeader(&instAst->body);
       if (!targetModule)
         return failure();
@@ -201,6 +198,7 @@ Context::convertModuleBody(const slang::ast::InstanceBodySymbol *module) {
           loc, builder.getStringAttr(instAst->name),
           FlatSymbolRefAttr::get(SymbolTable::getSymbolName(targetModule)),
           inPorts, outPorts);
+
       continue;
     }
 
@@ -246,6 +244,7 @@ Context::convertModuleBody(const slang::ast::InstanceBodySymbol *module) {
       auto loweredType = convertType(portAst->getType());
       if (!loweredType)
         return failure();
+
       auto portOp = builder.create<moore::PortOp>(
           convertLocation(portAst->location), loweredType,
           builder.getStringAttr(portAst->name),

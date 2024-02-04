@@ -90,10 +90,10 @@ static FileLineColLoc findBestLocation(Location loc, bool emitted,
     locs.resize(tail);
   }
   for (auto loc : locs)
-    if (!loc.getFilename().getValue().endswith(".fir"))
+    if (!loc.getFilename().getValue().ends_with(".fir"))
       return loc;
   for (auto loc : locs)
-    if (loc.getFilename().getValue().endswith(".fir"))
+    if (loc.getFilename().getValue().ends_with(".fir"))
       return loc;
   return {};
 }
@@ -210,7 +210,8 @@ struct EmittedExpr {
   operator bool() const { return expr != nullptr && type; }
 };
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const EmittedType &type) {
+static llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                     const EmittedType &type) {
   if (!type)
     return os << "<null>";
   os << type.name;
@@ -224,7 +225,8 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const EmittedType &type) {
   return os;
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const EmittedExpr &expr) {
+static llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                     const EmittedExpr &expr) {
   if (!expr)
     return os << "<null>";
   return os << expr.expr << " : " << expr.type;
@@ -662,7 +664,8 @@ EmittedExpr FileEmitter::emitExpression(Value value) {
       instName = instOp.getInstanceNameAttr();
     if (!instName)
       return {};
-    auto *moduleOp = instOp.getReferencedModuleCached(symbolCache);
+    auto *moduleOp =
+        symbolCache->getDefinition(instOp.getReferencedModuleNameAttr());
     auto portName =
         cast<hw::HWModuleLike>(moduleOp)
             .getPort(instOp.getPortIdForOutputId(result.getResultNumber()))

@@ -29,6 +29,7 @@
 #include "circt/Dialect/LTL/LTLOps.h"
 #include "circt/Dialect/SV/SVOps.h"
 #include "circt/Dialect/Seq/SeqOps.h"
+#include "circt/Dialect/Sim/SimOps.h"
 #include "circt/Dialect/Verif/VerifOps.h"
 #include "circt/Support/BackedgeBuilder.h"
 #include "circt/Support/Namespace.h"
@@ -1209,7 +1210,7 @@ static SmallVector<SubfieldOp> getAllFieldAccesses(Value structValue,
     assert(isa<SubfieldOp>(op));
     auto fieldAccess = cast<SubfieldOp>(op);
     auto elemIndex =
-        fieldAccess.getInput().getType().get().getElementIndex(field);
+        fieldAccess.getInput().getType().base().getElementIndex(field);
     if (elemIndex && *elemIndex == fieldAccess.getFieldIndex())
       accesses.push_back(fieldAccess);
   }
@@ -1543,6 +1544,7 @@ struct FIRRTLLowering : public FIRRTLVisitor<FIRRTLLowering, LogicalResult> {
   LogicalResult visitExpr(PlusArgsTestIntrinsicOp op);
   LogicalResult visitExpr(PlusArgsValueIntrinsicOp op);
   LogicalResult visitExpr(FPGAProbeIntrinsicOp op);
+  LogicalResult visitExpr(ClockInverterIntrinsicOp op);
   LogicalResult visitExpr(SizeOfIntrinsicOp op);
   LogicalResult visitExpr(ClockGateIntrinsicOp op);
   LogicalResult visitExpr(LTLAndIntrinsicOp op);
@@ -3540,65 +3542,29 @@ LogicalResult FIRRTLLowering::visitExpr(IsXIntrinsicOp op) {
       getOrCreateXConstant(input.getType().getIntOrFloatBitWidth()), true);
 }
 
-LogicalResult FIRRTLLowering::visitExpr(PlusArgsTestIntrinsicOp op) {
-  auto resultType = builder.getIntegerType(1);
-  auto str = builder.create<sv::ConstantStrOp>(op.getFormatString());
-  auto reg =
-      builder.create<sv::RegOp>(resultType, builder.getStringAttr("_pargs"));
-  addToInitialBlock([&]() {
-    auto call = builder.create<sv::SystemFunctionOp>(
-        resultType, "test$plusargs", ArrayRef<Value>{str});
-    builder.create<sv::BPAssignOp>(reg, call);
-  });
-  return setLoweringTo<sv::ReadInOutOp>(op, reg);
-}
-
 LogicalResult FIRRTLLowering::visitExpr(FPGAProbeIntrinsicOp op) {
   auto operand = getLoweredValue(op.getInput());
   builder.create<hw::WireOp>(operand);
   return success();
 }
 
+LogicalResult FIRRTLLowering::visitExpr(PlusArgsTestIntrinsicOp op) {
+  return setLoweringTo<sim::PlusArgsTestOp>(op, builder.getIntegerType(1),
+                                            op.getFormatStringAttr());
+}
+
 LogicalResult FIRRTLLowering::visitExpr(PlusArgsValueIntrinsicOp op) {
-  auto resultType = builder.getIntegerType(1);
   auto type = lowerType(op.getResult().getType());
   if (!type)
     return failure();
-  auto regv =
-      builder.create<sv::RegOp>(type, builder.getStringAttr("_pargs_v_"));
-  auto regf =
-      builder.create<sv::RegOp>(resultType, builder.getStringAttr("_pargs_f"));
-  builder.create<sv::IfDefOp>(
-      "SYNTHESIS",
-      [&]() {
-        auto cst0 = getOrCreateIntConstant(1, 0);
-        auto assignZ =
-            builder.create<sv::AssignOp>(regv, getOrCreateZConstant(type));
-        circt::sv::setSVAttributes(
-            assignZ, sv::SVAttributeAttr::get(
-                         builder.getContext(),
-                         "This dummy assignment exists to avoid undriven lint "
-                         "warnings (e.g., Verilator UNDRIVEN).",
-                         /*emitAsComment=*/true));
-        builder.create<sv::AssignOp>(regf, cst0);
-      },
-      [&]() {
-        addToInitialBlock([&]() {
-          auto zero32 = getOrCreateIntConstant(32, 0);
-          auto tmpResultType = builder.getIntegerType(32);
-          auto str = builder.create<sv::ConstantStrOp>(op.getFormatString());
-          auto call = builder.create<sv::SystemFunctionOp>(
-              tmpResultType, "value$plusargs", ArrayRef<Value>{str, regv});
-          auto truevalue = builder.create<comb::ICmpOp>(ICmpPredicate::ne, call,
-                                                        zero32, true);
-          builder.create<sv::BPAssignOp>(regf, truevalue);
-        });
-      });
-  auto readf = builder.create<sv::ReadInOutOp>(regf);
-  auto readv = builder.create<sv::ReadInOutOp>(regv);
 
-  (void)setLowering(op.getResult(), readv);
-  return setLowering(op.getFound(), readf);
+  auto valueOp = builder.create<sim::PlusArgsValueOp>(
+      builder.getIntegerType(1), type, op.getFormatStringAttr());
+  if (failed(setLowering(op.getResult(), valueOp.getResult())))
+    return failure();
+  if (failed(setLowering(op.getFound(), valueOp.getFound())))
+    return failure();
+  return success();
 }
 
 LogicalResult FIRRTLLowering::visitExpr(SizeOfIntrinsicOp op) {
@@ -3613,6 +3579,11 @@ LogicalResult FIRRTLLowering::visitExpr(ClockGateIntrinsicOp op) {
   return setLoweringTo<seq::ClockGateOp>(
       op, getLoweredValue(op.getInput()), getLoweredValue(op.getEnable()),
       testEnable, /*inner_sym=*/hw::InnerSymAttr{});
+}
+
+LogicalResult FIRRTLLowering::visitExpr(ClockInverterIntrinsicOp op) {
+  auto operand = getLoweredValue(op.getInput());
+  return setLoweringTo<seq::ClockInverterOp>(op, operand);
 }
 
 LogicalResult FIRRTLLowering::visitExpr(LTLAndIntrinsicOp op) {

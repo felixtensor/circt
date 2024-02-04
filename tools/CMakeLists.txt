@@ -17,3 +17,7 @@ add_subdirectory(ibistool)
 add_subdirectory(llhd-sim)
 add_subdirectory(om-linker)
 add_subdirectory(py-split-input-file)
+
+if(CIRCT_SLANG_FRONTEND_ENABLED)
+  add_subdirectory(circt-verilog)
+endif()

@@ -13,6 +13,8 @@
 #include "esi/Accelerator.h"
 #include "esi/Services.h"
 
+#include "esi/backends/Cosim.h"
+
 #include <sstream>
 
 // pybind11 includes
@@ -49,14 +51,15 @@ PYBIND11_MODULE(esiCppAccel, m) {
       .def("__repr__", [](Type &t) { return "<" + t.getID() + ">"; });
   py::class_<ChannelType, Type>(m, "ChannelType")
       .def_property_readonly("inner", &ChannelType::getInner,
-                             py::return_value_policy::reference_internal);
+                             py::return_value_policy::reference);
   py::enum_<BundleType::Direction>(m, "Direction")
       .value("To", BundleType::Direction::To)
       .value("From", BundleType::Direction::From)
       .export_values();
   py::class_<BundleType, Type>(m, "BundleType")
       .def_property_readonly("channels", &BundleType::getChannels,
-                             py::return_value_policy::reference_internal);
+                             py::return_value_policy::reference);
+  py::class_<VoidType, Type>(m, "VoidType");
   py::class_<AnyType, Type>(m, "AnyType");
   py::class_<BitVectorType, Type>(m, "BitVectorType")
       .def_property_readonly("width", &BitVectorType::getWidth);
@@ -66,10 +69,10 @@ PYBIND11_MODULE(esiCppAccel, m) {
   py::class_<UIntType, IntegerType>(m, "UIntType");
   py::class_<StructType, Type>(m, "StructType")
       .def_property_readonly("fields", &StructType::getFields,
-                             py::return_value_policy::reference_internal);
+                             py::return_value_policy::reference);
   py::class_<ArrayType, Type>(m, "ArrayType")
       .def_property_readonly("element", &ArrayType::getElementType,
-                             py::return_value_policy::reference_internal)
+                             py::return_value_policy::reference)
       .def_property_readonly("size", &ArrayType::getSize);
 
   py::class_<ModuleInfo>(m, "ModuleInfo")
@@ -125,20 +128,21 @@ PYBIND11_MODULE(esiCppAccel, m) {
   py::class_<ChannelPort>(m, "ChannelPort")
       .def("connect", &ChannelPort::connect)
       .def_property_readonly("type", &ChannelPort::getType,
-                             py::return_value_policy::reference_internal);
+                             py::return_value_policy::reference);
 
   py::class_<WriteChannelPort, ChannelPort>(m, "WriteChannelPort")
-      .def("write", [](WriteChannelPort &p, std::vector<uint8_t> data) {
-        p.write(data.data(), data.size());
+      .def("write", [](WriteChannelPort &p, py::bytearray &data) {
+        py::buffer_info info(py::buffer(data).request());
+        p.write(info.ptr, info.size);
       });
   py::class_<ReadChannelPort, ChannelPort>(m, "ReadChannelPort")
-      .def("read", [](ReadChannelPort &p, size_t maxSize) {
+      .def("read", [](ReadChannelPort &p, size_t maxSize) -> py::bytearray {
         std::vector<uint8_t> data(maxSize);
         std::ptrdiff_t size = p.read(data.data(), data.size());
         if (size < 0)
           throw std::runtime_error("read failed");
         data.resize(size);
-        return data;
+        return py::bytearray((char *)data.data(), data.size());
       });
 
   py::class_<BundlePort>(m, "BundlePort")
@@ -156,9 +160,9 @@ PYBIND11_MODULE(esiCppAccel, m) {
       py::class_<HWModule>(m, "HWModule")
           .def_property_readonly("info", &HWModule::getInfo)
           .def_property_readonly("ports", &HWModule::getPorts,
-                                 py::return_value_policy::reference_internal);
+                                 py::return_value_policy::reference);
 
-  // In order to inherit methods from "Design", it needs to be defined first.
+  // In order to inherit methods from "HWModule", it needs to be defined first.
   py::class_<Instance, HWModule>(m, "Instance")
       .def_property_readonly("id", &Instance::getID);
 
@@ -167,7 +171,15 @@ PYBIND11_MODULE(esiCppAccel, m) {
   // Since this returns a vector of Instance*, we need to define Instance first
   // or else pybind11-stubgen complains.
   hwmodule.def_property_readonly("children", &HWModule::getChildren,
-                                 py::return_value_policy::reference_internal);
+                                 py::return_value_policy::reference);
+
+  py::enum_<backends::cosim::CosimAccelerator::ManifestMethod>(
+      m, "CosimManifestMethod")
+      .value("ManifestCosim",
+             backends::cosim::CosimAccelerator::ManifestMethod::Cosim)
+      .value("ManifestMMIO",
+             backends::cosim::CosimAccelerator::ManifestMethod::MMIO)
+      .export_values();
 
   py::class_<AcceleratorConnection>(m, "AcceleratorConnection")
       .def(py::init(&registry::connect))
@@ -176,17 +188,31 @@ PYBIND11_MODULE(esiCppAccel, m) {
           [](AcceleratorConnection &acc) {
             return acc.getService<services::SysInfo>({});
           },
-          py::return_value_policy::reference_internal)
+          py::return_value_policy::reference)
       .def(
           "get_service_mmio",
           [](AcceleratorConnection &acc) {
             return acc.getService<services::MMIO>({});
           },
-          py::return_value_policy::reference_internal);
+          py::return_value_policy::reference)
+      // This is a bit of a hack to test. Come up with a more generic way to set
+      // accelerator-specific properties/configurations.
+      .def("set_manifest_method",
+           [](AcceleratorConnection &acc,
+              backends::cosim::CosimAccelerator::ManifestMethod method) {
+             auto cosim =
+                 dynamic_cast<backends::cosim::CosimAccelerator *>(&acc);
+             if (!cosim)
+               throw std::runtime_error(
+                   "set_manifest_method only supported for cosim connections");
+             cosim->setManifestMethod(method);
+           });
 
   py::class_<Manifest>(m, "Manifest")
       .def(py::init<std::string>())
       .def_property_readonly("api_version", &Manifest::getApiVersion)
-      .def("build_accelerator", &Manifest::buildAccelerator)
-      .def_property_readonly("type_table", &Manifest::getTypeTable);
+      .def("build_accelerator", &Manifest::buildAccelerator,
+           py::return_value_policy::take_ownership)
+      .def_property_readonly("type_table", &Manifest::getTypeTable)
+      .def_property_readonly("module_infos", &Manifest::getModuleInfos);
 }

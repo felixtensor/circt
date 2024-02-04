@@ -5,7 +5,7 @@ on:
     types: [created]
   workflow_dispatch:
   schedule:
-    - cron: 0 12 * * *
+    - cron: 0 12 * * 1
 
 jobs:
   build_wheels:
@@ -19,19 +19,11 @@ jobs:
           - os: ubuntu-20.04
             cibw_build: cp38-manylinux_x86_64
           - os: ubuntu-20.04
-            cibw_build: cp39-manylinux_x86_64
-          - os: ubuntu-20.04
             cibw_build: cp310-manylinux_x86_64
-          - os: ubuntu-20.04
-            cibw_build: cp311-manylinux_x86_64
           - os: macos-12
             cibw_build: cp38-macosx_x86_64
           - os: macos-12
-            cibw_build: cp39-macosx_x86_64
-          - os: macos-12
             cibw_build: cp310-macosx_x86_64
-          - os: macos-12
-            cibw_build: cp311-macosx_x86_64
 
     steps:
       - name: Get CIRCT
@@ -67,7 +59,7 @@ jobs:
           if-no-files-found: error
 
   push_wheels:
-    name: Push wheels (Tag or Nightly)
+    name: Push wheels (Tag or Weekly)
     runs-on: ubuntu-20.04
     if: github.repository == 'llvm/circt' && (github.ref_type == 'tag' || github.event_name == 'schedule')
     needs: build_wheels

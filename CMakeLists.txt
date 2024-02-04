@@ -25,6 +25,10 @@ if(POLICY CMP0116)
   cmake_policy(SET CMP0116 OLD)
 endif()
 
+if(POLICY CMP0135)
+  cmake_policy(SET CMP0135 NEW)
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
@@ -527,11 +531,13 @@ endif()
 # slang Verilog Frontend
 #-------------------------------------------------------------------------------
 
-option(CIRCT_SLANG_FRONTEND_ENABLED "Enables slang Verilog frontend." ON)
+option(CIRCT_SLANG_FRONTEND_ENABLED "Enables the slang Verilog frontend." OFF)
 option(CIRCT_SLANG_BUILD_FROM_SOURCE
   "Build slang from source instead of finding an installed package" ON)
 
 llvm_canonicalize_cmake_booleans(CIRCT_SLANG_FRONTEND_ENABLED)
+llvm_canonicalize_cmake_booleans(CIRCT_SLANG_BUILD_FROM_SOURCE)
+
 if(CIRCT_SLANG_FRONTEND_ENABLED)
   message(STATUS "slang Verilog frontend is enabled")
   if(CIRCT_SLANG_BUILD_FROM_SOURCE)
@@ -540,23 +546,27 @@ if(CIRCT_SLANG_FRONTEND_ENABLED)
     include(FetchContent)
     FetchContent_Declare(
       slang
-      GIT_REPOSITORY https://github.com/MikePopoloski/slang.git
-      GIT_TAG v3.0
-      GIT_SHALLOW ON)
+      URL https://github.com/MikePopoloski/slang/archive/refs/tags/v3.0.tar.gz
+      URL_HASH SHA256=02d184133525f6330a32bef492761b8ff52d0a33caed08eb51733f63cddb08e3
+    )
     set(FETCHCONTENT_TRY_FIND_PACKAGE_MODE "NEVER")
 
     # Force Slang to be built as a static library to avoid messing around with
     # RPATHs and installing a slang dylib alongside CIRCT. The static library
     # will embed Slang into ImportVerilog.
-    set(original_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
-    set(original_BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS})
+    set(ORIGINAL_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
+    set(ORIGINAL_BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS})
 
-    set(CMAKE_CXX_FLAGS "")
+    if (MSVC)
+      set(CMAKE_CXX_FLAGS "/EHsc")
+    else ()
+      set(CMAKE_CXX_FLAGS "")
+    endif ()
     set(BUILD_SHARED_LIBS OFF)
     FetchContent_MakeAvailable(slang)
 
-    set(CMAKE_CXX_FLAGS ${original_CMAKE_CXX_FLAGS})
-    set(BUILD_SHARED_LIBS ${original_BUILD_SHARED_LIBS})
+    set(CMAKE_CXX_FLAGS ${ORIGINAL_CMAKE_CXX_FLAGS})
+    set(BUILD_SHARED_LIBS ${ORIGINAL_BUILD_SHARED_LIBS})
 
     if(BUILD_SHARED_LIBS)
       set_target_properties(slang_slang PROPERTIES POSITION_INDEPENDENT_CODE ON)
