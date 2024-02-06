@@ -175,6 +175,7 @@ def EqualityOp : EqualOpBase<"eq">{
     
     Example:
     ```mlir
+      moore.eq %0, %1 : !moore.packed<range<logic, 3:0>> -> !moore.logic
     ```
   }];
 }
@@ -191,7 +192,7 @@ def InEqualityOp : EqualOpBase<"ne">{
 
     Example:
     ```mlir
-      moore.eq %0, %1 : !moore.packed<range<logic, 3:0>> -> !moore.logic
+      moore.ne %0, %1 : !moore.packed<range<logic, 3:0>> -> !moore.logic
     ```
   }];
 }
@@ -267,83 +268,4 @@ def ExtractOp : MIROp<"extract"> {
       return build($_builder, $_state, resultType, lhs, lowBit);
     }]>
   ];
-}
-
-//===---------------------------------------------------------------------===//
-// Equality operations
-//===---------------------------------------------------------------------===//
-
-class EqualOp<string name> : MIROp<name, [
-  Pure,
-  Commutative
-]> {
-  let arguments = (ins SimpleBitVectorType:$lhs,
-                       SimpleBitVectorType:$rhs,
-                       UnitAttr:$mode);
-  let results = (outs I1:$result);
-  let assemblyFormat = [{
-    ( `case` $mode^ )? $lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs)
-  }];
-}
-
-def EqualityOp : EqualOp<"eq">{
-  let summary = "A logical or case equality expression";
-  let description = [{
-    This operation represents the SystemVerilog logical and case
-    equality expressions `==` and `===`.
-    See IEEE1800-2017 11.4.5 "Equality operators".
-
-    a == ba equal to b, result can be unknown.
-    a === ba equal to b, including x and z.
-
-    The operators compare operands bit for bit. As with the relational
-    operators, the result shall be 0 if comparison fails and 1 if it succeeds.
-  }];
-}
-
-def InEqualityOp : EqualOp<"ne">{
-  let summary = "A logical or case inequality expression";
-  let description = [{
-    This operation represents the SystemVerilog logical and case
-    inequality expressions `!=` and `!==`.
-    See IEEE1800-2017 11.4.5 "Equality operators".
-
-    a != ba not equal to b, result can be unknown.
-    a !== ba not equal to b, including x and z.
-  }];
-}
-
-//===---------------------------------------------------------------------===//
-// Logical operations
-//===---------------------------------------------------------------------===//
-
-def LogicalAnd : I32EnumAttrCase<"LogicalAnd", 0, "and">;
-def LogicalOr : I32EnumAttrCase<"LogicalOr", 1, "or">;
-def LogicalImplication : I32EnumAttrCase<"LogicalImplication", 2, "impl">;
-def LogicalEquivalence : I32EnumAttrCase<"LogicalEquivalence", 3, "equiv">;
-
-def LogicalAttr : I32EnumAttr<"Logic", "Logical predicate", 
-       [LogicalAnd, LogicalOr, LogicalImplication, LogicalEquivalence]>{
-    let cppNamespace = "circt::moore";
-}
-
-def LogicalOp : MIROp<"logic", [
-  Pure,
-  TypesMatchWith<"lhs and result types must match",
-                   "lhs", "result", "$_self">
-]> {
-  let summary = "Definitions of logical operators";
-  let description = [{
-    The result of the evaluation of a logical operation shall be `1`, `0`, 
-    or, if the result is ambiguous, the unkonw value `x`.
-    See IEEE Std 1800-2017 11.4.7.
-  }];
-  let arguments = (ins LogicalAttr:$logic,
-                       SimpleBitVectorType:$lhs,
-                       SimpleBitVectorType:$rhs);
-  let results = (outs SimpleBitVectorType:$result);
-
-  let assemblyFormat = [{
-    $logic $lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs)
-  }];
 }

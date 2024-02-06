@@ -27,7 +27,6 @@ set(CIRCT_TEST_DEPENDS
   circt-opt
   circt-translate
   circt-reduce
-  circt-verilog
   handshake-runner
   firtool
   hlstool
