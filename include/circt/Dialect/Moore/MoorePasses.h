@@ -24,10 +24,10 @@ namespace circt {
 namespace moore {
 
 class Declaration {
-  // A map used to collect nets or variables and their values.
+  // A map used to collect output ports, nets or variables and their values.
   // Only record the value produced by the last assignment op,
   // including the declaration assignment.
-  DenseMap<Operation *, Value> netOrVarInfo;
+  DenseMap<Operation *, Value> assignmentChains;
 
   // Identifying an assignment statement whether been used by a net/variable.
   // If identified as true, delete it at the stage of conversion between
@@ -35,12 +35,12 @@ class Declaration {
   DenseMap<Operation *, bool> isUsedAssignment;
 
 public:
-  void addValue(Operation *op, Value value) { netOrVarInfo[op] = value; }
+  void addValue(Operation *op, Value value) { assignmentChains[op] = value; }
   void addIdentifier(Operation *op, bool b) {
     isUsedAssignment.insert({op, b});
   }
 
-  auto getValue(Operation *op) { return netOrVarInfo.lookup(op); }
+  auto getValue(Operation *op) { return assignmentChains.lookup(op); }
   auto getIdentifier(Operation *op) { return isUsedAssignment.lookup(op); }
 };
 

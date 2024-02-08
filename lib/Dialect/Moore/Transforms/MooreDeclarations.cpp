@@ -13,7 +13,6 @@
 
 #include "PassDetail.h"
 #include "circt/Dialect/Moore/MoorePasses.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 
 using namespace circt;
 using namespace moore;
@@ -28,11 +27,11 @@ struct MooreDeclarationsPass
 extern Declaration moore::decl;
 void MooreDeclarationsPass::runOnOperation() {
 
-  getOperation()->walk([&](mlir::func::FuncOp moduleOp) {
+  getOperation()->walk([&](SVModuleOp moduleOp) {
     for (auto &op : moduleOp.getOps()) {
 
       TypeSwitch<Operation *, void>(&op)
-          //   .Case<PortOp>([&](auto &op) { decl.addValue(op, nullptr); })
+
           .Case<VariableOp, NetOp>([&](auto &op) {
             auto operandIt = op.getOperands();
             auto value = operandIt.empty() ? nullptr : op.getOperand(0);
@@ -43,7 +42,8 @@ void MooreDeclarationsPass::runOnOperation() {
             auto srcValue = op.getOperand(1);
             decl.addValue(destOp, srcValue);
             decl.addIdentifier(op, true);
-          });
+          })
+          .Case<PortOp>([&](auto &op) { decl.addValue(op, nullptr); });
     };
     return WalkResult::advance();
   });

@@ -10,6 +10,7 @@
 #define CIRCT_DIALECT_MOORE_MOOREOPS
 
 include "circt/Dialect/Moore/MooreTypes.td"
+include "mlir/IR/OpBase.td"
 include "mlir/IR/RegionKindInterface.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 
@@ -23,7 +24,22 @@ def SVModuleOp : MooreOp<"module", [
   RegionKindInterface,
   NoTerminator
 ]> {
-  let summary = "A module definition";
+  let summary = "A SystemVerilog module";
+  let description = [{
+    The `moore.module` operation represents a sv module. It is logically
+    equivalent to the module in SystemVerilog.
+
+    Example:
+    ```mlir
+      moore.module @top {
+        %a = moore.port In : !moore.logic
+        %b = moore.port In : !moore.logic
+        %c = moore.port Out : !moore.logic
+        %0 = moore.mir.shl %a, %b : !moore.logic, !moore.logic
+        moore.mir.cassign %c, %0 : !moore.logic
+      }
+    ```
+  }];
 
   let arguments = (ins SymbolNameAttr:$sym_name);
   let regions = (region SizedRegion<1>:$body);
@@ -41,14 +57,30 @@ def SVModuleOp : MooreOp<"module", [
 }
 
 def InstanceOp : MooreOp<"instance", [
-  DeclareOpInterfaceMethods<SymbolUserOpInterface>
+  AttrSizedOperandSegments,
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
 ]> {
   let summary = "Create an instance of a module";
-
+  let description = [{
+    This represents an instance of a module. The inputs and results are
+    the inputs and results of module. The inputs and results types of the
+    instance must match the specified module type.
+ 
+    Example:
+    ```mlir
+    moore.instance "foo" @Foo() -> () : () -> ()
+    moore.instance "bar" @Bar(%a) -> (%b) : (!moore.logic) -> (!moore.logic)
+    ```
+  }];
   let arguments = (ins StrAttr:$instanceName,
-                       FlatSymbolRefAttr:$moduleName);
+                       FlatSymbolRefAttr:$moduleName,
+                       Variadic<AnyType>:$inputs,
+                       Variadic<AnyType>:$outputs);
+  let results = (outs);
+
   let assemblyFormat = [{
-    $instanceName $moduleName attr-dict
+    $instanceName $moduleName `(` $inputs `)` `->` `(` $outputs `)` attr-dict `:`
+    functional-type($inputs, $outputs)
   }];
 }
 
@@ -73,7 +105,18 @@ def ProcedureOp : MooreOp<"procedure", [
 ]> {
   let summary = "A procedure executed at specific simulation steps";
   let description = [{
-    See IEEE 1800-2017 § 9.2 "Structured procedures".
+    The procedure opreation has five kinds: initial, final, always, always_comb,
+    always_latch, always_ff. See IEEE 1800-2017 § 9.2 "Structured procedures".
+
+    Example:
+    ```mlir
+      moore.procedure initial {}
+      moore.procedure final {}
+      moore.procedure always {}
+      moore.procedure always_comb {}
+      moore.procedure always_latch {}
+      moore.procedure always_ff {}
+    ```
   }];
 
   let regions = (region SizedRegion<1>:$body);
@@ -108,13 +151,27 @@ def DirectionAttr: I32EnumAttr<"Direction", "Port direction",
 }
 
 def PortOp : MooreOp<"port", [
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
   RecursiveMemoryEffects
 ]> {
   let summary = "Declare a port";
+  let description = [{
+    The `moore.port` operation defines declaration of ports from original module
+    / interface / instance ... It contains port direction (four types: 
+    **In**, **Out**, **InOut**, **Ref**); port type and port name.
+
+    Example:
+    ```mlir
+      %a = moore.port In : !moore.logic
+      %b = moore.port Out : !moore.logic
+    ```
+  }];
+
   let arguments = (ins StrAttr:$name, DirectionAttr:$direction);
-  let results = (outs);
+  let results = (outs UnpackedType:$result);
   let assemblyFormat = [{
-    $direction $name attr-dict
+    `` custom<ImplicitSSAName>($name) $direction attr-dict
+    `:` type($result)
   }];
 }
 
@@ -126,6 +183,14 @@ def VariableOp : MooreOp<"variable", [
   let summary = "A variable declaration";
   let description = [{
     See IEEE 1800-2017 § 6.8 "Variable declarations".
+
+    Example:
+    ```mlir
+      %var1 = moore.variable : !moore.int
+      %var2 = moore.variable %var1 : !moore.int
+      %d0 = moore.variable : !moore.logic
+      %e2 = moore.variable : !moore.packed<named<"myEnum", enum<shortint, loc(
+    ```
   }];
   let arguments = (ins StrAttr:$name, Optional<UnpackedType>:$initial);
   let results = (outs UnpackedType:$result);
@@ -142,7 +207,13 @@ def NetOp : MooreOp<"net", [
 ]> {
   let summary = "A net declaration";
   let description = [{
-    See IEEE 1800-2017 § 6.7 "Net declarations".
+    See IEEE 1800-2017 § 6.7 "Net declarations.
+
+    Example:
+    ```mlir
+      %d0 = moore.net "wire" : !moore.logic
+      %d1 = moore.net "tri" : !moore.logic
+    ```
   }];
   let arguments = (ins
     StrAttr:$name,
@@ -174,7 +245,15 @@ def EventControlOp : MooreOp<"event", [
   HasParent<"ProcedureOp">
 ]> {
   let summary = "Detecting posedge and negedge";
-  let description = "See SV Spec 9.4.2.";
+  let description = [{
+    See SV Spec 9.4.2.
+
+    Example:
+    ```mlir
+      moore.event posedge "clk"
+      moore.event negedge "clk"
+    ```
+  }];
   let arguments = (ins EdgeAtrr:$edge, StrAttr:$name);
   let results = (outs);
   let assemblyFormat = [{
@@ -188,6 +267,21 @@ def EventControlOp : MooreOp<"event", [
 
 def ConstantOp : MooreOp<"constant", [Pure]> {
   let summary = "A constant integer value";
+  let description = [{
+    The constant operation produces a constant value of a simple bit vector
+    type. What is the SBV (Simple Bit Vector) type, it is a zero or
+    one-dimensional integer type. For example, `bit`, `logic [0:0]`,
+    `reg [31:0]`, or `int`, but `bit[1:0][2:0]`, `int [4:0]`, `bit[5:2]`, or
+    `bit []` are not.
+
+    Example:
+    ```mlir
+      %0 = moore.constant false : !moore.logic
+      %1 = moore.constant 0 : !moore.packed<range<bit, 7:0>>
+      %3 = moore.constant -7 : !moore.packed<range<bit, 3:0>>
+    ```
+  }];
+
   let arguments = (ins APIntAttr:$value);
   let results = (outs SimpleBitVectorType:$result);
   let hasCustomAssemblyFormat = 1;
@@ -203,16 +297,16 @@ def ConversionOp : MooreOp<"conversion", [Pure]> {
   let description = [{
     An explicit or implicit type conversion. These are either generated
     automatically in order to make assignments compatible:
-
-    ```
+    
+    Example:
+    ```mlir
     int a;
     shortint b;
     a = b;  // generates an implicit cast from shortint to int
     ```
 
     Or explicitly by the user through a type, sign, or const cast expression:
-
-    ```
+    ```mlir
     byte'(a)
     unsigned'(a)
     signed'(a)
@@ -222,7 +316,7 @@ def ConversionOp : MooreOp<"conversion", [Pure]> {
     See IEEE 1800-2017 § 6.24 "Casting".
   }];
   let arguments = (ins AnyType:$input);
-  let results = (outs UnpackedType:$result);
+  let results = (outs AnyType:$result);
   let assemblyFormat = [{
     $input attr-dict `:` type($input) `->` type($result)
   }];
@@ -235,6 +329,12 @@ def NegOp : MooreOp<"neg", [Pure, SameOperandsAndResultType]> {
     X, all bits in the result are X.
 
     See IEEE 1800-2017 § 11.4.3 "Arithmetic operators".
+
+    Example:
+    ```mlir
+      moore.not %a : !moore.int
+      moore.not %b : !moore.bit
+    ```
   }];
   let arguments = (ins SimpleBitVectorType:$input);
   let results = (outs SimpleBitVectorType:$result);
@@ -258,6 +358,11 @@ def NotOp : MooreOp<"not", [Pure, SameOperandsAndResultType]> {
     | 1     | 0      |
     | X     | X      |
     | Z     | X      |
+
+    Example:
+    ```mlir
+      %0 = moore.not %a : !moore.logic
+    ```
   }];
   let arguments = (ins SimpleBitVectorType:$input);
   let results = (outs SimpleBitVectorType:$result);
@@ -311,6 +416,11 @@ def BoolCastOp : MooreOp<"bool_cast", [
     operators.
 
     See IEEE 1800-2017 § 11.4.7 "Logical operators".
+
+    Example:
+    ```mlir
+      %0 = moore.bool_cast %in : (!moore.logic) -> (!moore.int)
+    ```
   }];
   let arguments = (ins UnpackedType:$input);
   let results = (outs SingleBitType:$result);
@@ -335,6 +445,12 @@ def AddOp : BinaryOpBase<"add", [Commutative]> {
     result are X.
 
     See IEEE 1800-2017 § 11.4.3 "Arithmetic operators".
+
+    Example:
+    ```mlir
+      %0 = moore.add %arg0, %arg1 : !moore.bit
+      %c = moore.add %a, %b : !moore.int
+    ```
   }];
 }
 
@@ -345,6 +461,12 @@ def SubOp : BinaryOpBase<"sub"> {
     the two operands is Z or X, all bits in the result are X.
 
     See IEEE 1800-2017 § 11.4.3 "Arithmetic operators".
+
+    Example:
+    ```mlir
+      %0 = moore.sub %arg0, %arg1 : !moore.bit
+      %c = moore.sub %a, %b : !moore.int
+    ```
   }];
 }
 
@@ -355,6 +477,12 @@ def MulOp : BinaryOpBase<"mul", [Commutative]> {
     the result are X.
 
     See IEEE 1800-2017 § 11.4.3 "Arithmetic operators".
+
+    Example:
+    ```mlir
+      %0 = moore.mul %arg0, %arg1 : !moore.bit
+      %c = moore.mul %a, %b : !moore.int
+    ```
   }];
 }
 
@@ -367,6 +495,12 @@ def DivOp : BinaryOpBase<"div"> {
     result are X.
 
     See IEEE 1800-2017 § 11.4.3 "Arithmetic operators".
+
+    Example:
+    ```mlir
+      %0 = moore.div %arg0, %arg1 : !moore.bit
+      %c = moore.div %a, %b : !moore.integer
+    ```
   }];
 }
 
@@ -388,6 +522,12 @@ def ModOp : BinaryOpBase<"mod"> {
     | -11 |   3 |     -2 |
     |  11 |  -3 |      2 |
     | -11 |  -3 |     -2 |
+
+    Example:
+    ```mlir
+      %0 = moore.mod %a, %b : !moore.logic
+      %1 = moore.mod %in1, %in2 : !moore.packed<range<logic, 31:0>>
+    ```
   }];
 }
 
@@ -405,6 +545,11 @@ def AndOp : BinaryOpBase<"and", [Commutative]> {
     | 1 | 0 | 1 | X | X |
     | X | 0 | X | X | X |
     | Z | 0 | X | X | X |
+
+    Example:
+    ```mlir
+      %2 = moore.and %0, %1 : !moore.logic
+    ```
   }];
 }
 
@@ -422,6 +567,11 @@ def OrOp : BinaryOpBase<"or", [Commutative]> {
     | 1 | 1 | 1 | 1 | 1 |
     | X | X | 1 | X | X |
     | Z | X | 1 | X | X |
+
+    Example:
+    ```mlir
+      %c = moore.or %a, %b : !moore.logic
+    ```
   }];
 }
 
@@ -439,6 +589,11 @@ def XorOp : BinaryOpBase<"xor", [Commutative]> {
     | 1 | 1 | 0 | X | X |
     | X | X | X | X | X |
     | Z | X | X | X | X |
+
+    Example:
+    ```mlir
+      %c = moore.xor %a, %b : !moore.logic
+    ```
   }];
 }
 

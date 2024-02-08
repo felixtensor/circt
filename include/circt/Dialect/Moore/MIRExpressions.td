@@ -69,6 +69,12 @@ def ConcatOp : MIROp<"concat", [
     IEEE 1800-2017 §11.8.1 "Rules for expression types"). The size of the result
     is the sum of the sizes of all operands. If any of the operands is
     four-valued, the result is four-valued; otherwise it is two-valued.
+
+    Example:
+    ```mlir
+      %0 = moore.mir.concat %arg0, %arg0 : (!moore.bit, !moore.bit) -> !moore.packed<range<bit, 1:0>>
+      %1 = moore.mir.concat %arg1, %arg1 : (!moore.logic, !moore.logic) -> !moore.packed<range<logic, 1:0>>
+    ```
   }];
   let arguments = (ins Variadic<SimpleBitVectorType>:$values);
   let results = (outs SimpleBitVectorType:$result);
@@ -81,7 +87,7 @@ def ConcatOp : MIROp<"concat", [
 // Shift operations
 //===----------------------------------------------------------------------===//
 
-class ShiftOp<string name> : MIROp<name, [
+class ShiftOpBase<string name> : MIROp<name, [
     Pure, 
     TypesMatchWith<"value and result types must match",
                    "value", "result", "$_self">
@@ -96,7 +102,7 @@ class ShiftOp<string name> : MIROp<name, [
   }];
 }
 
-def ShlOp : ShiftOp<"shl"> {
+def ShlOp : ShiftOpBase<"shl"> {
   let summary = "A logical or arithmetic left-shift expression";
   let description = [{
     This operation represents the SystemVerilog logical and arithmetic
@@ -108,10 +114,15 @@ def ShlOp : ShiftOp<"shl"> {
 
     The logical and arithmetic shift both insert zeros in place of the shifted
     bits. 
+
+    Example:
+    ```mlir
+      %0 = moore.mir.shl %a, %b : !moore.logic, !moore.logic
+    ```
   }];
 }
 
-def ShrOp : ShiftOp<"shr"> {
+def ShrOp : ShiftOpBase<"shr"> {
   let summary = "A logical or arithmetic right-shift expression";
   let description = [{
     This operation represents the SystemVerilog logical and arithmetic
@@ -124,6 +135,11 @@ def ShrOp : ShiftOp<"shr"> {
     The logical shift always inserts zeros in place of the shifted bits.
     The arithmetic shift inserts zeros if the result type is unsigned or the 
     MSB (sign bit) if the result type is signed.
+
+    Example:
+    ```mlir
+      %0 = moore.mir.shr %a, %b : !moore.logic, !moore.logic
+    ```
   }];
 }
 
@@ -131,7 +147,7 @@ def ShrOp : ShiftOp<"shr"> {
 // Equality operations
 //===---------------------------------------------------------------------===//
 
-class EqualOp<string name> : MIROp<name, [
+class EqualOpBase<string name> : MIROp<name, [
   Pure,
   Commutative
 ]> {
@@ -144,7 +160,7 @@ class EqualOp<string name> : MIROp<name, [
   }];
 }
 
-def EqualityOp : EqualOp<"eq">{
+def EqualityOp : EqualOpBase<"eq">{
   let summary = "A logical or case equality expression";
   let description = [{
     This operation represents the SystemVerilog logical and case
@@ -156,10 +172,15 @@ def EqualityOp : EqualOp<"eq">{
 
     The operators compare operands bit for bit. As with the relational
     operators, the result shall be 0 if comparison fails and 1 if it succeeds.
+    
+    Example:
+    ```mlir
+      moore.eq %0, %1 : !moore.packed<range<logic, 3:0>> -> !moore.logic
+    ```
   }];
 }
 
-def InEqualityOp : EqualOp<"ne">{
+def InEqualityOp : EqualOpBase<"ne">{
   let summary = "A logical or case inequality expression";
   let description = [{
     This operation represents the SystemVerilog logical and case
@@ -168,6 +189,11 @@ def InEqualityOp : EqualOp<"ne">{
 
     a != ba not equal to b, result can be unknown.
     a !== ba not equal to b, including x and z.
+
+    Example:
+    ```mlir
+      moore.ne %0, %1 : !moore.packed<range<logic, 3:0>> -> !moore.logic
+    ```
   }];
 }
 
@@ -195,6 +221,12 @@ def LogicalOp : MIROp<"logic", [
     The result of the evaluation of a logical operation shall be `1`, `0`, 
     or, if the result is ambiguous, the unkonw value `x`.
     See IEEE Std 1800-2017 11.4.7.
+
+    Example:
+    ```mlir
+      %2 = moore.mir.logic and %0, %1 : !moore.logic, !moore.logic
+      %3 = moore.mir.logic or %in, %2 : !moore.logic, !moore.logic
+    ```
   }];
   let arguments = (ins LogicalAttr:$logic,
                        SimpleBitVectorType:$lhs,
@@ -214,8 +246,19 @@ def ExtractOp : MIROp<"extract"> {
    Extract a range of bits into a smaller value, 
    lowBit specifies the lowest bit included.
   }];
+  let description = [{
+    The extract operation support: elementSelect and rangeSelect features.
+
+    Example:
+    ```mlir
+      %0 = moore.mir.extract %c from 2 : (!moore.packed<range<logic, 3:0>>) -> !moore.logic
+      %1 = moore.mir.extract %a from 0 : (!moore.packed<range<logic, 3:0>>) -> !moore.packed<range<logic, 1:0>>
+    ```
+  }];
+  
   let arguments = (ins UnpackedType:$input, I32Attr:$lowBit);
   let results = (outs UnpackedType:$result);
+  
   let assemblyFormat =
     "$input `from` $lowBit attr-dict `:` functional-type($input, $result)";
   let builders = [

@@ -3209,7 +3209,7 @@ static LogicalResult checkConnectConditionality(FConnectLike connect) {
           .Case<SubaccessOp>([&](SubaccessOp op) {
             if (op.getInput()
                     .getType()
-                    .get()
+                    .base()
                     .getElementTypePreservingConst()
                     .isConst())
               originalFieldType = originalFieldType.getConstType(true);
@@ -3572,12 +3572,20 @@ LogicalResult impl::inferReturnTypes(
   return failure();
 }
 
-/// Get an attribute by name from a list of named attributes. Aborts if the
-/// attribute does not exist.
-static Attribute getAttr(ArrayRef<NamedAttribute> attrs, StringRef name) {
+/// Get an attribute by name from a list of named attributes.  Return null if no
+/// attribute is found with that name.
+static Attribute maybeGetAttr(ArrayRef<NamedAttribute> attrs, StringRef name) {
   for (auto attr : attrs)
     if (attr.getName() == name)
       return attr.getValue();
+  return {};
+}
+
+/// Get an attribute by name from a list of named attributes. Aborts if the
+/// attribute does not exist.
+static Attribute getAttr(ArrayRef<NamedAttribute> attrs, StringRef name) {
+  if (auto attr = maybeGetAttr(attrs, name))
+    return attr;
   llvm::report_fatal_error("attribute '" + name + "' not found");
 }
 
@@ -4017,7 +4025,7 @@ ParseResult FEnumCreateOp::parse(OpAsmParser &parser, OperationState &result) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult IsTagOp::verify() {
-  if (getFieldIndex() >= getInput().getType().get().getNumElements())
+  if (getFieldIndex() >= getInput().getType().base().getNumElements())
     return emitOpError("element index is greater than the number of fields in "
                        "the bundle type");
   return success();
@@ -4206,7 +4214,7 @@ LogicalResult OpenSubfieldOp::verify() {
 }
 
 LogicalResult SubtagOp::verify() {
-  if (getFieldIndex() >= getInput().getType().get().getNumElements())
+  if (getFieldIndex() >= getInput().getType().base().getNumElements())
     return emitOpError("subfield element index is greater than the number "
                        "of fields in the bundle type");
   return success();
@@ -5130,7 +5138,7 @@ void VerbatimExprOp::getAsmResultNames(
   auto isOkCharacter = [](char c) { return llvm::isAlnum(c) || c == '_'; };
   auto name = getText();
   // Ignore a leading ` in macro name.
-  if (name.startswith("`"))
+  if (name.starts_with("`"))
     name = name.drop_front();
   name = name.take_while(isOkCharacter);
   if (!name.empty())
@@ -5149,7 +5157,7 @@ void VerbatimWireOp::getAsmResultNames(
   auto isOkCharacter = [](char c) { return llvm::isAlnum(c) || c == '_'; };
   auto name = getText();
   // Ignore a leading ` in macro name.
-  if (name.startswith("`"))
+  if (name.starts_with("`"))
     name = name.drop_front();
   name = name.take_while(isOkCharacter);
   if (!name.empty())

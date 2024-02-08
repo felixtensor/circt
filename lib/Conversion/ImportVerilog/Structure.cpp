@@ -160,9 +160,45 @@ Context::convertModuleBody(const slang::ast::InstanceBodySymbol *module) {
       auto *targetModule = convertModuleHeader(&instAst->body);
       if (!targetModule)
         return failure();
+
+      const auto *instBodySymbol =
+          instAst->body.as_if<slang::ast::InstanceBodySymbol>();
+
+      LLVM_DEBUG(llvm::dbgs() << "Instance body members "
+                              << instBodySymbol->members().size() << "\n");
+
+      for (auto &member : instBodySymbol->members())
+        if (member.kind == slang::ast::SymbolKind::Port) {
+          const auto *p = member.as_if<slang::ast::PortSymbol>();
+          pInfo[&p->location] = p->direction;
+        }
+
+      SmallVector<Value> inPorts, outPorts;
+      for (auto *connections : instAst->getPortConnections()) {
+        Value port;
+        if (connections->getExpression()) {
+          if (auto *expr = connections->getExpression()
+                               ->as_if<slang::ast::AssignmentExpression>()) {
+            port = convertExpression(expr->left());
+          } else {
+            port = convertExpression(*connections->getExpression());
+          }
+
+          auto it = pInfo.find(&connections->port.location);
+          if (it->second != slang::ast::ArgumentDirection::Out)
+            inPorts.push_back(port);
+          else
+            outPorts.push_back(port);
+
+        } else {
+          // TODO: connect interface to mudule instance.
+        }
+      }
       builder.create<moore::InstanceOp>(
           loc, builder.getStringAttr(instAst->name),
-          FlatSymbolRefAttr::get(SymbolTable::getSymbolName(targetModule)));
+          FlatSymbolRefAttr::get(SymbolTable::getSymbolName(targetModule)),
+          inPorts, outPorts);
+
       continue;
     }
 
@@ -193,11 +229,13 @@ Context::convertModuleBody(const slang::ast::InstanceBodySymbol *module) {
       if (netAst->getInitializer())
         assignment = convertExpression(*netAst->getInitializer());
 
-      auto netOp = builder.create<moore::NetOp>(
-          convertLocation(netAst->location), loweredType,
-          builder.getStringAttr(netAst->name),
-          builder.getStringAttr(netAst->netType.name), assignment);
-      varSymbolTable.insert(netAst->name, netOp);
+      if (!varSymbolTable.lookup(netAst->name)) {
+        auto netOp = builder.create<moore::NetOp>(
+            convertLocation(netAst->location), loweredType,
+            builder.getStringAttr(netAst->name),
+            builder.getStringAttr(netAst->netType.name), assignment);
+        varSymbolTable.insert(netAst->name, netOp);
+      }
       continue;
     }
 
@@ -206,10 +244,12 @@ Context::convertModuleBody(const slang::ast::InstanceBodySymbol *module) {
       auto loweredType = convertType(portAst->getType());
       if (!loweredType)
         return failure();
-      builder.create<moore::PortOp>(
-          convertLocation(portAst->location),
+
+      auto portOp = builder.create<moore::PortOp>(
+          convertLocation(portAst->location), loweredType,
           builder.getStringAttr(portAst->name),
           static_cast<moore::Direction>(portAst->direction));
+      varSymbolTable.insert(portAst->name, portOp);
       continue;
     }
 

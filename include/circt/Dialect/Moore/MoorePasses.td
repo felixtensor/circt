@@ -19,10 +19,10 @@ def MooreDeclarations : Pass<"moore-declarations", "mlir::ModuleOp"> {
     let summary = "Collect all nets and variables declarations";
     let description = [{
       This pass will perform a pre-pass over the IR to find all concurrently-
-      assigned nets and variables. Basically go through all net/variable 
-      declarations and collect the connected value in a hash map (either the
-      initial value in nets, or the cassigned value). At the same time add all
-      cassigns that has considered here into a set of ops to be deleted.
+      assigned output ports, nets and variables. Basically go through all output
+      port/net/variable declarations and collect the connected value in a hash map
+      (either the initial value in nets, or the cassigned value). At the same time
+      add all cassigns that has considered here into a set of ops to be deleted.
     }];
     let constructor = "circt::moore::createMooreDeclarationsPass()";
 }

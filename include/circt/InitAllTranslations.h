@@ -11,7 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "circt/Conversion/ImportVerilog.h"
 #include "circt/Dialect/Calyx/CalyxEmitter.h"
 #include "circt/Dialect/ESI/ESIDialect.h"
 #include "circt/Dialect/FIRRTL/FIREmitter.h"
@@ -35,7 +34,6 @@ inline void registerAllTranslations() {
     firrtl::registerToFIRFileTranslation();
     ExportSystemC::registerExportSystemCTranslation();
     debug::registerTranslations();
-    registerFromVerilogTranslation();
     return true;
   }();
   (void)initOnce;
