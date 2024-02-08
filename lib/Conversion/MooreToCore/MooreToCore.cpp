@@ -177,7 +177,7 @@ struct SVModuleOpConv : public OpConversionPattern<SVModuleOp> {
   MoorePortInfoMap &portMap;
 };
 
-struct VariableOpConversion : public OpConversionPattern<VariableOp> {
+struct VariableOpConv : public OpConversionPattern<VariableOp> {
   using OpConversionPattern::OpConversionPattern;
   LogicalResult
   matchAndRewrite(VariableOp op, OpAdaptor adaptor,
@@ -198,7 +198,7 @@ struct VariableOpConversion : public OpConversionPattern<VariableOp> {
   }
 };
 
-struct NetOpConversion : public OpConversionPattern<NetOp> {
+struct NetOpConv : public OpConversionPattern<NetOp> {
   using OpConversionPattern::OpConversionPattern;
   LogicalResult
   matchAndRewrite(NetOp op, OpAdaptor adaptor,
@@ -219,7 +219,7 @@ struct NetOpConversion : public OpConversionPattern<NetOp> {
   }
 };
 
-struct CAssignOpConversion : public OpConversionPattern<CAssignOp> {
+struct CAssignOpConv : public OpConversionPattern<CAssignOp> {
   using OpConversionPattern::OpConversionPattern;
   LogicalResult
   matchAndRewrite(CAssignOp op, OpAdaptor adaptor,
@@ -229,7 +229,7 @@ struct CAssignOpConversion : public OpConversionPattern<CAssignOp> {
   }
 };
 
-struct HWOutputOpConversion : public OpConversionPattern<hw::OutputOp> {
+struct HWOutputOpConv : public OpConversionPattern<hw::OutputOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult
@@ -256,7 +256,7 @@ struct ConstantOpConv : public OpConversionPattern<ConstantOp> {
   }
 };
 
-struct ConcatOpConversion : public OpConversionPattern<ConcatOp> {
+struct ConcatOpConv : public OpConversionPattern<ConcatOp> {
   using OpConversionPattern::OpConversionPattern;
   LogicalResult
   matchAndRewrite(ConcatOp op, OpAdaptor adaptor,
@@ -270,7 +270,7 @@ struct ConcatOpConversion : public OpConversionPattern<ConcatOp> {
 /// the comb::SubOp(UTBinOp). Maybe the DivOp and the ModOp will be supported
 /// after properly handling the signed expr.
 template <typename SourceOp, typename TargetOp>
-struct BinaryOpConversion : public OpConversionPattern<SourceOp> {
+struct BinaryOpConv : public OpConversionPattern<SourceOp> {
   using OpConversionPattern<SourceOp>::OpConversionPattern;
   using OpAdaptor = typename SourceOp::Adaptor;
 
@@ -284,7 +284,7 @@ struct BinaryOpConversion : public OpConversionPattern<SourceOp> {
   }
 };
 
-struct DivOpConversion : public OpConversionPattern<DivOp> {
+struct DivOpConv : public OpConversionPattern<DivOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult
@@ -302,7 +302,7 @@ struct DivOpConversion : public OpConversionPattern<DivOp> {
   }
 };
 
-struct ModOpConversion : public OpConversionPattern<ModOp> {
+struct ModOpConv : public OpConversionPattern<ModOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult
@@ -321,7 +321,7 @@ struct ModOpConversion : public OpConversionPattern<ModOp> {
 };
 
 template <typename SourceOp>
-struct ICmpOpConversion : public OpConversionPattern<SourceOp> {
+struct ICmpOpConv : public OpConversionPattern<SourceOp> {
   using OpConversionPattern<SourceOp>::OpConversionPattern;
   using OpAdaptor = typename SourceOp::Adaptor;
 
@@ -364,7 +364,7 @@ struct ICmpOpConversion : public OpConversionPattern<SourceOp> {
   }
 };
 
-struct ExtractOpConversion : public OpConversionPattern<ExtractOp> {
+struct ExtractOpConv : public OpConversionPattern<ExtractOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult
@@ -381,7 +381,7 @@ struct ExtractOpConversion : public OpConversionPattern<ExtractOp> {
   }
 };
 
-struct ConversionOpConversion : public OpConversionPattern<ConversionOp> {
+struct ConversionOpConv : public OpConversionPattern<ConversionOp> {
   using OpConversionPattern::OpConversionPattern;
   LogicalResult
   matchAndRewrite(ConversionOp op, OpAdaptor adaptor,
@@ -399,7 +399,7 @@ struct ConversionOpConversion : public OpConversionPattern<ConversionOp> {
 // Statement Conversion
 //===----------------------------------------------------------------------===//
 
-struct CondBranchOpConversion : public OpConversionPattern<cf::CondBranchOp> {
+struct CondBranchOpConv : public OpConversionPattern<cf::CondBranchOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult
@@ -412,7 +412,7 @@ struct CondBranchOpConversion : public OpConversionPattern<cf::CondBranchOp> {
   }
 };
 
-struct BranchOpConversion : public OpConversionPattern<cf::BranchOp> {
+struct BranchOpConv : public OpConversionPattern<cf::BranchOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult
@@ -424,7 +424,7 @@ struct BranchOpConversion : public OpConversionPattern<cf::BranchOp> {
   }
 };
 
-struct UnrealizedConversionCastConversion
+struct UnrealizedConversionCastConv
     : public OpConversionPattern<UnrealizedConversionCastOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -448,7 +448,7 @@ struct UnrealizedConversionCastConversion
   }
 };
 
-struct ShlOpConversion : public OpConversionPattern<ShlOp> {
+struct ShlOpConv : public OpConversionPattern<ShlOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult
@@ -466,7 +466,7 @@ struct ShlOpConversion : public OpConversionPattern<ShlOp> {
   }
 };
 
-struct ShrOpConversion : public OpConversionPattern<ShrOp> {
+struct ShrOpConv : public OpConversionPattern<ShrOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult
@@ -602,23 +602,17 @@ void circt::populateMooreToCoreConversionPatterns(TypeConverter &typeConverter,
                                                   RewritePatternSet &patterns) {
   auto *context = patterns.getContext();
 
-  patterns.add<HWOutputOpConversion, ConcatOpConversion, ConstantOpConv,
-               ConversionOpConversion, ConversionOpConversion,
-               VariableOpConversion, NetOpConversion, CAssignOpConversion,
-               CondBranchOpConversion, BranchOpConversion, ShlOpConversion,
-               ShrOpConversion, BinaryOpConversion<AddOp, comb::AddOp>,
-               BinaryOpConversion<SubOp, comb::SubOp>,
-               BinaryOpConversion<MulOp, comb::MulOp>,
-               BinaryOpConversion<AndOp, comb::AndOp>,
-               BinaryOpConversion<OrOp, comb::OrOp>,
-               BinaryOpConversion<XorOp, comb::XorOp>, DivOpConversion,
-               ModOpConversion, ICmpOpConversion<LtOp>, ICmpOpConversion<LeOp>,
-               ICmpOpConversion<GtOp>, ICmpOpConversion<GeOp>,
-               ICmpOpConversion<EqOp>, ICmpOpConversion<NeOp>,
-               ICmpOpConversion<CaseEqOp>, ICmpOpConversion<CaseNeOp>,
-               ICmpOpConversion<WildcardEqOp>, ICmpOpConversion<WildcardNeOp>,
-               ExtractOpConversion, UnrealizedConversionCastConversion>(
-      typeConverter, context);
+  patterns.add<
+      HWOutputOpConv, ConcatOpConv, ConstantOpConv, ConversionOpConv,
+      VariableOpConv, NetOpConv, CAssignOpConv, CondBranchOpConv, BranchOpConv,
+      ShlOpConv, ShrOpConv, BinaryOpConv<AddOp, comb::AddOp>,
+      BinaryOpConv<SubOp, comb::SubOp>, BinaryOpConv<MulOp, comb::MulOp>,
+      BinaryOpConv<AndOp, comb::AndOp>, BinaryOpConv<OrOp, comb::OrOp>,
+      BinaryOpConv<XorOp, comb::XorOp>, DivOpConv, ModOpConv, ICmpOpConv<LtOp>,
+      ICmpOpConv<LeOp>, ICmpOpConv<GtOp>, ICmpOpConv<GeOp>, ICmpOpConv<EqOp>,
+      ICmpOpConv<NeOp>, ICmpOpConv<CaseEqOp>, ICmpOpConv<CaseNeOp>,
+      ICmpOpConv<WildcardEqOp>, ICmpOpConv<WildcardNeOp>, ExtractOpConv,
+      UnrealizedConversionCastConv>(typeConverter, context);
 
   hw::populateHWModuleLikeTypeConversionPattern(
       hw::HWModuleOp::getOperationName(), patterns, typeConverter);
