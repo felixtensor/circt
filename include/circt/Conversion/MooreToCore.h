@@ -20,6 +20,24 @@
 #include <memory>
 
 namespace circt {
+/// Stores port interface into data structure to help convert moore module
+/// structure to hw module structure.
+struct MoorePortInfo {
+  std::unique_ptr<hw::ModulePortInfo> hwPorts;
+
+  // A mapping between the port name, port op and port type in moore module.
+  DenseMap<StringAttr, std::pair<moore::PortOp, Type>> inputsPort, outputsPort;
+
+  // Constructor
+  MoorePortInfo(moore::SVModuleOp moduleOp);
+};
+
+using MoorePortInfoMap = DenseMap<StringAttr, MoorePortInfo>;
+
+/// Get the Moore structure operations to HW conversion patterns.
+void populateMooreStructureConversionPatterns(TypeConverter &typeConverter,
+                                              RewritePatternSet &patterns,
+                                              MoorePortInfoMap &portInfoMap);
 
 /// Get the Moore to HW/Comb/Seq conversion patterns.
 void populateMooreToCoreConversionPatterns(TypeConverter &typeConverter,
