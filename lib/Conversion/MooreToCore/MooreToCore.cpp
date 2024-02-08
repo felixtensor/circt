@@ -102,7 +102,9 @@ static Value adjustIntegerWidth(OpBuilder &builder, Value value,
   return builder.create<comb::MuxOp>(loc, isZero, lo, max, false);
 }
 
-static bool isSignedResultType(Operation *op) {
+/// Due to the result type of the `lt`, or `le`, or `gt`, or `ge` ops are
+/// always unsigned, estimating their operands type.
+static bool isSignedType(Operation *op) {
   return TypeSwitch<Operation *, bool>(op)
       .template Case<LtOp, LeOp, GtOp, GeOp>([&](auto op) -> bool {
         return cast<UnpackedType>(op->getOperand(0).getType())
@@ -119,59 +121,31 @@ static bool isSignedResultType(Operation *op) {
       });
 }
 
-struct VariableOpConversion : public OpConversionPattern<VariableOp> {
-  using OpConversionPattern::OpConversionPattern;
-  LogicalResult
-  matchAndRewrite(VariableOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    ImplicitLocOpBuilder builder(op->getLoc(), op.getContext());
-    Value value = decl.getValue(op);
-    if (!value) {
-      rewriter.eraseOp(op);
-      return success();
-    }
-
-    Type resultType = typeConverter->convertType(op.getResult().getType());
-    op->moveAfter(value.getDefiningOp());
-    typeConverter->materializeTargetConversion(builder, op->getLoc(),
-                                               resultType, {value});
-    rewriter.replaceOpWithNewOp<hw::WireOp>(op, value, op.getNameAttr());
-    return success();
-  }
-};
-
-struct NetOpConversion : public OpConversionPattern<NetOp> {
-  using OpConversionPattern::OpConversionPattern;
-  LogicalResult
-  matchAndRewrite(NetOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    ImplicitLocOpBuilder builder(op->getLoc(), op.getContext());
-    Value value = decl.getValue(op);
-    if (!value) {
-      rewriter.eraseOp(op);
-      return success();
-    }
-
-    Type resultType = typeConverter->convertType(op.getResult().getType());
-    op->moveAfter(value.getDefiningOp());
-    typeConverter->materializeTargetConversion(builder, op->getLoc(),
-                                               resultType, {value});
-    rewriter.replaceOpWithNewOp<hw::WireOp>(op, value, op.getNameAttr());
-    return success();
-  }
-};
-
-struct CAssignOpConversion : public OpConversionPattern<CAssignOp> {
-  using OpConversionPattern::OpConversionPattern;
-  LogicalResult
-  matchAndRewrite(CAssignOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-
-    if (decl.getIdentifier(op))
-      rewriter.eraseOp(op);
-    return success();
-  }
-};
+/// Not define the predicate for `relation` and `equality` operations in the
+/// MooreDialect, but comb needs it. Return a correct `comb::ICmpPredicate`
+/// corresponding to different moore `relation` and `equality` operations.
+static comb::ICmpPredicate getCombPredicate(Operation *op) {
+  using comb::ICmpPredicate;
+  return TypeSwitch<Operation *, ICmpPredicate>(op)
+      .Case<LtOp>([&](auto op) {
+        return isSignedType(op) ? ICmpPredicate::slt : ICmpPredicate::ult;
+      })
+      .Case<LeOp>([&](auto op) {
+        return isSignedType(op) ? ICmpPredicate::sle : ICmpPredicate::ule;
+      })
+      .Case<GtOp>([&](auto op) {
+        return isSignedType(op) ? ICmpPredicate::sgt : ICmpPredicate::ugt;
+      })
+      .Case<GeOp>([&](auto op) {
+        return isSignedType(op) ? ICmpPredicate::sge : ICmpPredicate::uge;
+      })
+      .Case<EqOp>([&](auto op) { return ICmpPredicate::eq; })
+      .Case<NeOp>([&](auto op) { return ICmpPredicate::ne; })
+      .Case<CaseEqOp>([&](auto op) { return ICmpPredicate::ceq; })
+      .Case<CaseNeOp>([&](auto op) { return ICmpPredicate::cne; })
+      .Case<WildcardEqOp>([&](auto op) { return ICmpPredicate::weq; })
+      .Case<WildcardNeOp>([&](auto op) { return ICmpPredicate::wne; });
+}
 
 //===----------------------------------------------------------------------===//
 // Structure Conversion
@@ -227,10 +201,40 @@ struct SVModuleOpConv : public OpConversionPattern<SVModuleOp> {
   MoorePortInfoMap &portMap;
 };
 
-struct VariableOpConv : public OpConversionPattern<VariableOp> {
+struct ProcedureOpConv : public OpConversionPattern<ProcedureOp> {
   using OpConversionPattern::OpConversionPattern;
   LogicalResult
-  matchAndRewrite(VariableOp op, OpAdaptor adaptor,
+  matchAndRewrite(ProcedureOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    switch (adaptor.getKind()) {
+    case ProcedureKind::AlwaysComb:
+      rewriter.setInsertionPointAfter(op->getPrevNode());
+      rewriter.inlineBlockBefore(&op.getBodyBlock(),
+                                 op->getPrevNode()->getBlock(),
+                                 rewriter.getInsertionPoint());
+      rewriter.eraseOp(op);
+      return success();
+    case ProcedureKind::Always:
+    case ProcedureKind::AlwaysFF:
+    case ProcedureKind::AlwaysLatch:
+    case ProcedureKind::Initial:
+    case ProcedureKind::Final:
+      return emitError(op->getLoc(), "Unsupported procedure operation");
+    };
+    return success();
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Declaration Conversion
+//===----------------------------------------------------------------------===//
+
+template <typename OpTy>
+struct DeclOpConv : public OpConversionPattern<OpTy> {
+  using OpConversionPattern<OpTy>::OpConversionPattern;
+  using OpAdaptor = typename OpTy::Adaptor;
+  LogicalResult
+  matchAndRewrite(OpTy op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     ImplicitLocOpBuilder builder(op->getLoc(), op.getContext());
     Value value = decl.getValue(op);
@@ -239,53 +243,11 @@ struct VariableOpConv : public OpConversionPattern<VariableOp> {
       return success();
     }
 
-    Type resultType = typeConverter->convertType(op.getResult().getType());
-    op->moveAfter(value.getDefiningOp());
-    typeConverter->materializeTargetConversion(builder, op->getLoc(),
-                                               resultType, {value});
+    Type resultType =
+        ConversionPattern::typeConverter->convertType(op.getResult().getType());
+    ConversionPattern::typeConverter->materializeTargetConversion(
+        builder, op->getLoc(), resultType, {value});
     rewriter.replaceOpWithNewOp<hw::WireOp>(op, value, op.getNameAttr());
-    return success();
-  }
-};
-
-struct NetOpConv : public OpConversionPattern<NetOp> {
-  using OpConversionPattern::OpConversionPattern;
-  LogicalResult
-  matchAndRewrite(NetOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    ImplicitLocOpBuilder builder(op->getLoc(), op.getContext());
-    Value value = decl.getValue(op);
-    if (!value) {
-      rewriter.eraseOp(op);
-      return success();
-    }
-
-    Type resultType = typeConverter->convertType(op.getResult().getType());
-    op->moveAfter(value.getDefiningOp());
-    typeConverter->materializeTargetConversion(builder, op->getLoc(),
-                                               resultType, {value});
-    rewriter.replaceOpWithNewOp<hw::WireOp>(op, value, op.getNameAttr());
-    return success();
-  }
-};
-
-struct CAssignOpConv : public OpConversionPattern<CAssignOp> {
-  using OpConversionPattern::OpConversionPattern;
-  LogicalResult
-  matchAndRewrite(CAssignOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    rewriter.eraseOp(op);
-    return success();
-  }
-};
-
-struct HWOutputOpConv : public OpConversionPattern<hw::OutputOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(hw::OutputOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<hw::OutputOp>(op, adaptor.getOperands());
     return success();
   }
 };
@@ -316,9 +278,75 @@ struct ConcatOpConv : public OpConversionPattern<ConcatOp> {
   }
 };
 
-/// Lowering the moore::BinaryOp to the comb::UTVariadicOp, which includes
-/// the comb::SubOp(UTBinOp). Maybe the DivOp and the ModOp will be supported
-/// after properly handling the signed expr.
+struct ShlOpConv : public OpConversionPattern<ShlOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(ShlOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type resultType = typeConverter->convertType(op.getResult().getType());
+
+    // Comb shift operations require the same bit-width for value and amount
+    Value amount =
+        adjustIntegerWidth(rewriter, adaptor.getAmount(),
+                           resultType.getIntOrFloatBitWidth(), op->getLoc());
+    rewriter.replaceOpWithNewOp<comb::ShlOp>(op, resultType, adaptor.getValue(),
+                                             amount, false);
+    return success();
+  }
+};
+
+struct ShrOpConv : public OpConversionPattern<ShrOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(ShrOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type resultType = typeConverter->convertType(op.getResult().getType());
+
+    // Comb shift operations require the same bit-width for value and amount
+    Value amount =
+        adjustIntegerWidth(rewriter, adaptor.getAmount(),
+                           resultType.getIntOrFloatBitWidth(), op->getLoc());
+
+    if (adaptor.getArithmetic() && isSignedType(op)) {
+      rewriter.replaceOpWithNewOp<comb::ShrSOp>(
+          op, resultType, adaptor.getValue(), amount, false);
+      return success();
+    }
+
+    rewriter.replaceOpWithNewOp<comb::ShrUOp>(
+        op, resultType, adaptor.getValue(), amount, false);
+    return success();
+  }
+};
+
+template <typename OpTy>
+struct UnaryOpConv : public OpConversionPattern<OpTy> {
+  using OpConversionPattern<OpTy>::OpConversionPattern;
+  using OpAdaptor = typename OpTy::Adaptor;
+
+  LogicalResult
+  matchAndRewrite(OpTy op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<comb::ParityOp>(op, adaptor.getInput());
+    return success();
+  }
+};
+
+struct NotOpConv : public OpConversionPattern<NotOp> {
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(NotOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type resultType =
+        ConversionPattern::typeConverter->convertType(op.getResult().getType());
+    Value max = rewriter.create<hw::ConstantOp>(op.getLoc(), resultType, -1);
+    rewriter.replaceOpWithNewOp<comb::XorOp>(op, adaptor.getInput(), max);
+    return success();
+  }
+};
+
 template <typename SourceOp, typename TargetOp>
 struct BinaryOpConv : public OpConversionPattern<SourceOp> {
   using OpConversionPattern<SourceOp>::OpConversionPattern;
@@ -327,45 +355,19 @@ struct BinaryOpConv : public OpConversionPattern<SourceOp> {
   LogicalResult
   matchAndRewrite(SourceOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    if (isa<DivOp>(op) && isSignedType(op)) {
+      rewriter.replaceOpWithNewOp<comb::DivSOp>(op, adaptor.getLhs(),
+                                                adaptor.getRhs(), false);
+      return success();
+    }
+    if (isa<ModOp>(op) && isSignedType(op)) {
+      rewriter.replaceOpWithNewOp<comb::ModSOp>(op, adaptor.getLhs(),
+                                                adaptor.getRhs(), false);
+      return success();
+    }
 
     rewriter.replaceOpWithNewOp<TargetOp>(op, adaptor.getLhs(),
                                           adaptor.getRhs(), false);
-    return success();
-  }
-};
-
-struct DivOpConv : public OpConversionPattern<DivOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(DivOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    Type resultType = typeConverter->convertType(op.getResult().getType());
-
-    if (isSignedResultType(op))
-      rewriter.replaceOpWithNewOp<comb::DivSOp>(
-          op, resultType, adaptor.getLhs(), adaptor.getRhs(), false);
-
-    rewriter.replaceOpWithNewOp<comb::DivUOp>(op, resultType, adaptor.getLhs(),
-                                              adaptor.getRhs(), false);
-    return success();
-  }
-};
-
-struct ModOpConv : public OpConversionPattern<ModOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(ModOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    Type resultType = typeConverter->convertType(op.getResult().getType());
-
-    if (isSignedResultType(op))
-      rewriter.replaceOpWithNewOp<comb::ModSOp>(
-          op, resultType, adaptor.getLhs(), adaptor.getRhs(), false);
-
-    rewriter.replaceOpWithNewOp<comb::ModUOp>(op, resultType, adaptor.getLhs(),
-                                              adaptor.getRhs(), false);
     return success();
   }
 };
@@ -380,33 +382,7 @@ struct ICmpOpConv : public OpConversionPattern<SourceOp> {
                   ConversionPatternRewriter &rewriter) const override {
     Type resultType =
         ConversionPattern::typeConverter->convertType(op.getResult().getType());
-
-    using comb::ICmpPredicate;
-    ICmpPredicate pred;
-    llvm::StringLiteral opName = op.getOperationName();
-    if (opName == "moore.lt")
-      pred = isSignedResultType(op) ? ICmpPredicate::slt : ICmpPredicate::ult;
-    else if (opName == "moore.le")
-      pred = isSignedResultType(op) ? ICmpPredicate::sle : ICmpPredicate::ule;
-    else if (opName == "moore.gt")
-      pred = isSignedResultType(op) ? ICmpPredicate::sgt : ICmpPredicate::ugt;
-    else if (opName == "moore.ge")
-      pred = isSignedResultType(op) ? ICmpPredicate::sge : ICmpPredicate::uge;
-    else if (opName == "moore.eq")
-      pred = ICmpPredicate::eq;
-    else if (opName == "moore.ne")
-      pred = ICmpPredicate::ne;
-    else if (opName == "moore.case_eq")
-      pred = ICmpPredicate::ceq;
-    else if (opName == "moore.case_ne")
-      pred = ICmpPredicate::cne;
-    else if (opName == "moore.wildcard_eq")
-      pred = ICmpPredicate::weq;
-    else if (opName == "moore.wildcard_ne")
-      pred = ICmpPredicate::wne;
-    else
-      llvm_unreachable("Missing relation/(wildcard/case)equlity op to "
-                       "comb::ICmpOp conversion");
+    comb::ICmpPredicate pred = getCombPredicate(op);
 
     rewriter.replaceOpWithNewOp<comb::ICmpOp>(
         op, resultType, pred, adapter.getLhs(), adapter.getRhs());
@@ -448,6 +424,32 @@ struct ConversionOpConv : public OpConversionPattern<ConversionOp> {
 //===----------------------------------------------------------------------===//
 // Statement Conversion
 //===----------------------------------------------------------------------===//
+
+/// TODO: The `PAssign`, `PCAssign` ops need to convert.
+template <typename SourceOp>
+struct AssignOpConv : public OpConversionPattern<SourceOp> {
+  using OpConversionPattern<SourceOp>::OpConversionPattern;
+  using OpAdaptor = typename SourceOp::Adaptor;
+
+  LogicalResult
+  matchAndRewrite(SourceOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
+struct HWOutputOpConv : public OpConversionPattern<hw::OutputOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(hw::OutputOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<hw::OutputOp>(op, adaptor.getOperands());
+    return success();
+  }
+};
 
 struct CondBranchOpConv : public OpConversionPattern<cf::CondBranchOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -494,49 +496,6 @@ struct UnrealizedConversionCastConv
 
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
         op, convResTypes, adaptor.getOperands());
-    return success();
-  }
-};
-
-struct ShlOpConv : public OpConversionPattern<ShlOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(ShlOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    Type resultType = typeConverter->convertType(op.getResult().getType());
-
-    // Comb shift operations require the same bit-width for value and amount
-    Value amount =
-        adjustIntegerWidth(rewriter, adaptor.getAmount(),
-                           resultType.getIntOrFloatBitWidth(), op->getLoc());
-    rewriter.replaceOpWithNewOp<comb::ShlOp>(op, resultType, adaptor.getValue(),
-                                             amount, false);
-    return success();
-  }
-};
-
-struct ShrOpConv : public OpConversionPattern<ShrOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(ShrOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    Type resultType = typeConverter->convertType(op.getResult().getType());
-
-    // Comb shift operations require the same bit-width for value and amount
-    Value amount =
-        adjustIntegerWidth(rewriter, adaptor.getAmount(),
-                           resultType.getIntOrFloatBitWidth(), op->getLoc());
-
-    if (adaptor.getArithmetic() && isSignedResultType(op)) {
-      rewriter.replaceOpWithNewOp<comb::ShrSOp>(
-          op, resultType, adaptor.getValue(), amount, false);
-      return success();
-    }
-
-    rewriter.replaceOpWithNewOp<comb::ShrUOp>(
-        op, resultType, adaptor.getValue(), amount, false);
     return success();
   }
 };
@@ -628,6 +587,10 @@ static void populateTypeConversion(TypeConverter &typeConverter) {
     return std::nullopt;
   });
 
+  // When converting the net/variable declarations without initial value, it
+  // will apply an unconverted value. Example `logic a; assign a = 1'b1;`.
+  // And fail to convert the Moore type to the legal type, if directly call
+  // `materializeTargetConversion()`.
   typeConverter.addTargetMaterialization(
       [&](OpBuilder &builder, Type type, ValueRange values, Location loc) {
         assert(values.size() == 1);
@@ -659,17 +622,22 @@ void circt::populateMooreToCoreConversionPatterns(TypeConverter &typeConverter,
                                                   RewritePatternSet &patterns) {
   auto *context = patterns.getContext();
 
-  patterns.add<
-      HWOutputOpConv, ConcatOpConv, ConstantOpConv, ConversionOpConv,
-      VariableOpConv, NetOpConv, CAssignOpConv, CondBranchOpConv, BranchOpConv,
-      ShlOpConv, ShrOpConv, BinaryOpConv<AddOp, comb::AddOp>,
-      BinaryOpConv<SubOp, comb::SubOp>, BinaryOpConv<MulOp, comb::MulOp>,
-      BinaryOpConv<AndOp, comb::AndOp>, BinaryOpConv<OrOp, comb::OrOp>,
-      BinaryOpConv<XorOp, comb::XorOp>, DivOpConv, ModOpConv, ICmpOpConv<LtOp>,
-      ICmpOpConv<LeOp>, ICmpOpConv<GtOp>, ICmpOpConv<GeOp>, ICmpOpConv<EqOp>,
-      ICmpOpConv<NeOp>, ICmpOpConv<CaseEqOp>, ICmpOpConv<CaseNeOp>,
-      ICmpOpConv<WildcardEqOp>, ICmpOpConv<WildcardNeOp>, ExtractOpConv,
-      UnrealizedConversionCastConv>(typeConverter, context);
+  patterns
+      .add<ProcedureOpConv, DeclOpConv<NetOp>, DeclOpConv<VariableOp>,
+           ConstantOpConv, ConcatOpConv, ShlOpConv, ShrOpConv,
+           UnaryOpConv<ReduceAndOp>, UnaryOpConv<ReduceOrOp>,
+           UnaryOpConv<ReduceXorOp>, UnaryOpConv<BoolCastOp>, NotOpConv,
+           BinaryOpConv<AddOp, comb::AddOp>, BinaryOpConv<SubOp, comb::SubOp>,
+           BinaryOpConv<MulOp, comb::MulOp>, BinaryOpConv<DivOp, comb::DivUOp>,
+           BinaryOpConv<ModOp, comb::ModUOp>, BinaryOpConv<AndOp, comb::AndOp>,
+           BinaryOpConv<OrOp, comb::OrOp>, BinaryOpConv<XorOp, comb::XorOp>,
+           ICmpOpConv<LtOp>, ICmpOpConv<LeOp>, ICmpOpConv<GtOp>,
+           ICmpOpConv<GeOp>, ICmpOpConv<EqOp>, ICmpOpConv<NeOp>,
+           ICmpOpConv<CaseEqOp>, ICmpOpConv<CaseNeOp>, ICmpOpConv<WildcardEqOp>,
+           ICmpOpConv<WildcardNeOp>, ExtractOpConv, ConversionOpConv,
+           HWOutputOpConv, AssignOpConv<CAssignOp>, AssignOpConv<BPAssignOp>,
+           CondBranchOpConv, BranchOpConv, UnrealizedConversionCastConv>(
+          typeConverter, context);
 
   hw::populateHWModuleLikeTypeConversionPattern(
       hw::HWModuleOp::getOperationName(), patterns, typeConverter);
@@ -695,6 +663,8 @@ void MooreToCorePass::runOnOperation() {
   MLIRContext &context = getContext();
   ModuleOp module = getOperation();
 
+  // This is used to collect the net/variable/port declarations with their
+  // assigned value and identify the assignment statements that had been used.
   auto pm = PassManager::on<ModuleOp>(&context);
   pm.addPass(moore::createMooreDeclarationsPass());
   if (failed(pm.run(module)))

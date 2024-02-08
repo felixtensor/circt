@@ -133,10 +133,43 @@ moore.module @Expressions {
   %30 = moore.mir.extract %arg2 from 2 : (!moore.packed<range<bit, 5:0>>) -> !moore.packed<range<bit, 3:2>>
   %31 = moore.mir.extract %arg2 from 2 : (!moore.packed<range<bit, 5:0>>) -> !moore.bit
 
-  // CHECK-NEXT: hw.constant 12 : i32
-  // CHECK-NEXT: hw.constant 3 : i6
+  // CHECK-NEXT: %c12_i32 = hw.constant 12 : i32
+  // CHECK-NEXT: %c3_i6 = hw.constant 3 : i6
   %32 = moore.constant 12 : !moore.int
   %33 = moore.constant 3 : !moore.packed<range<bit, 5:0>>
 
+  // CHECK-NEXT: comb.parity %arg0 : i1
+  // CHECK-NEXT: comb.parity %arg0 : i1
+  // CHECK-NEXT: comb.parity %arg0 : i1
+  %34 = moore.reduce_and %arg0 : !moore.bit -> !moore.bit
+  %35 = moore.reduce_or %arg0 : !moore.bit -> !moore.bit
+  %36 = moore.reduce_xor %arg0 : !moore.bit -> !moore.bit
+  
+  // CHECK-NEXT: %c-1_i6 = hw.constant -1 : i6
+  // CHECK-NEXT: comb.xor %arg2, %c-1_i6 : i6
+  %37 = moore.not %arg2 : !moore.packed<range<bit, 5:0>>
+
+  // CHECK-NEXT: comb.parity %arg2 : i6
+  %38 = moore.bool_cast %arg2 : !moore.packed<range<bit, 5:0>> -> !moore.bit
+
   // CHECK-NEXT: hw.output
+}
+
+// CHECK-LABEL: hw.module @Declaration(
+moore.module @Declaration {
+  
+  // CHECK-NEXT : %a = hw.wire %c12_i32  : i32
+  %a = moore.variable : !moore.int
+  moore.procedure always_comb {
+
+  // CHECK-NEXT : %c5_i32 = hw.constant 5 : i32
+  %0 = moore.constant 5 : !moore.int
+  moore.mir.bpassign %a, %0 : !moore.int
+
+  // CHECK-NEXT : %c12_i32 = hw.constant 12 : i32
+  %1 = moore.constant 12 : !moore.int
+  moore.mir.bpassign %a, %1 : !moore.int
+
+  }
+  // CHECK-NEXT : hw.output
 }

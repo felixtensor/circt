@@ -24,30 +24,34 @@ struct MooreDeclarationsPass
 };
 } // namespace
 
+void Declaration::addValue(Operation *op) {
+  TypeSwitch<Operation *, void>(op)
+      // TODO: The loop, if, case, and other statements.
+      .Case<VariableOp, NetOp>([&](auto op) {
+        auto operandIt = op.getOperands();
+        auto value = operandIt.empty() ? nullptr : op.getOperand(0);
+        assignmentChains[op] = value;
+      })
+      .Case<CAssignOp, BPAssignOp, PAssignOp, PCAssignOp>([&](auto op) {
+        auto destOp = op.getOperand(0).getDefiningOp();
+        auto srcValue = op.getOperand(1);
+        assignmentChains[destOp] = srcValue;
+      })
+      .Case<ProcedureOp>([&](auto op) {
+        for (auto &nestOp : op.getOps()) {
+          addValue(&nestOp);
+        }
+      });
+}
+
 extern Declaration moore::decl;
 void MooreDeclarationsPass::runOnOperation() {
-
   getOperation()->walk([&](SVModuleOp moduleOp) {
     for (auto &op : moduleOp.getOps()) {
-
-      TypeSwitch<Operation *, void>(&op)
-
-          .Case<VariableOp, NetOp>([&](auto &op) {
-            auto operandIt = op.getOperands();
-            auto value = operandIt.empty() ? nullptr : op.getOperand(0);
-            decl.addValue(op, value);
-          })
-          .Case<CAssignOp, BPAssignOp, PAssignOp, PCAssignOp>([&](auto &op) {
-            auto destOp = op.getOperand(0).getDefiningOp();
-            auto srcValue = op.getOperand(1);
-            decl.addValue(destOp, srcValue);
-            decl.addIdentifier(op, true);
-          })
-          .Case<PortOp>([&](auto &op) { decl.addValue(op, nullptr); });
+      decl.addValue(&op);
     };
     return WalkResult::advance();
   });
-  //   markAllAnalysesPreserved();
 }
 
 std::unique_ptr<mlir::Pass> circt::moore::createMooreDeclarationsPass() {

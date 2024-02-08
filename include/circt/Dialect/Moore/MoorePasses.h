@@ -29,19 +29,10 @@ class Declaration {
   // including the declaration assignment.
   DenseMap<Operation *, Value> assignmentChains;
 
-  // Identifying an assignment statement whether been used by a net/variable.
-  // If identified as true, delete it at the stage of conversion between
-  // dialects, except for the output ports assignment.
-  DenseMap<Operation *, bool> isUsedAssignment;
-
 public:
-  void addValue(Operation *op, Value value) { assignmentChains[op] = value; }
-  void addIdentifier(Operation *op, bool b) {
-    isUsedAssignment.insert({op, b});
-  }
+  void addValue(Operation *op);
 
   auto getValue(Operation *op) { return assignmentChains.lookup(op); }
-  auto getIdentifier(Operation *op) { return isUsedAssignment.lookup(op); }
 };
 
 extern Declaration decl;
