@@ -343,31 +343,34 @@ def NonBlockingAssignOp : AssignOpBase<"nonblocking_assign"> {
 //===----------------------------------------------------------------------===//
 
 def None: I32EnumAttrCase<"None", 0, "none">;
+/// Transit from 0 to x/z/1, and from x/z to 1.
 def PosEdge: I32EnumAttrCase<"PosEdge", 1, "posedge">;
+/// Transit from 1 to x/z/0, and from x/z to 0.
 def NegEdge: I32EnumAttrCase<"NegEdge", 2, "negedge">;
-def BothEdges: I32EnumAttrCase<"BothEdges", 3, "bothedges">;
-
+/// Include the negedge and posedge.
+def BothEdges: I32EnumAttrCase<"BothEdges", 3, "edge">;
 def EdgeAtrr: I32EnumAttr<"Edge", "Edge kind",
                           [None, PosEdge, NegEdge, BothEdges]>{
   let cppNamespace = "circt::moore";
 }
-
 def EventControlOp : MooreOp<"event", [
   HasParent<"ProcedureOp">
 ]> {
   let summary = "Detecting posedge and negedge";
   let description = [{
+    It is introduced by the symbol `@`, and it allows statement execution to
+    be delayed until the occurrence of some simulation event occurring in a
+    procedure executing concurrently with this procedure.
     Example:
     ```mlir
-      moore.event posedge "clk"
-      moore.event negedge "clk"
+      moore.event posedge %clk : !moore.logic
     ```
     See IEEE 1800-2017 § 9.4.2 "Event control".
   }];
-  let arguments = (ins EdgeAtrr:$edge, StrAttr:$name);
+  let arguments = (ins EdgeAtrr:$edge, UnpackedType:$input);
   let results = (outs);
   let assemblyFormat = [{
-    $edge $name attr-dict
+    $edge $input attr-dict `:` type($input)
   }];
 }
 
@@ -861,35 +864,76 @@ def ConcatOp : MooreOp<"concat", [
   }];
 }
 
-//===----------------------------------------------------------------------===//
-// Vector bit/part select operations
-//===----------------------------------------------------------------------===//
-def ExtractOp : MooreOp<"extract"> {
-  let summary = [{
-   Extract a range of bits into a smaller value, 
-   lowBit specifies the lowest bit included.
-  }];
+def ReplicateOp : MooreOp<"replicate", [
+  Pure
+]> {
+  let summary = "Multiple concatenation of expressions";
   let description = [{
-    The extract operation support: elementSelect and rangeSelect features.
+    This operation indicates a joining together of that many copies of the 
+    concatenation `{constant{w}}`. Which enclosed together within brace.
+    The 'constant' must a non-negative, non-x, and non-z constant expression.
+    The 'constant' may be a value of zero, but it only exists in parameterized
+    code, and it will be ignored(type is changed to the void).
     Example:
-    ```mlir
-      %0 = moore.extract %c from 2 : (!moore.packed<range<logic, 3:0>>) -> !moore.logic
-      %1 = moore.extract %a from 0 : (!moore.packed<range<logic, 3:0>>) -> !moore.packed<range<logic, 1:0>>
+    ```
+      {4{w}}   // the same as {w, w, w, w}
+    ```
+    See IEEE 1800-2017 §11.4.12 "Concatenation operators".
+  }];
+  let arguments = (ins SimpleBitVectorType:$value);
+  let results = (outs SimpleBitVectorType:$result);
+  let assemblyFormat = [{
+    $value attr-dict `:` functional-type($value, $result)
+  }];
+  let builders = [
+    OpBuilder<(ins "Value":$value, "int32_t":$multiple), [{
+      auto bitWidth = cast<moore::PackedType>(value.getType())
+                          .getSimpleBitVector().size;
+      auto resultType = $_builder.getIntegerType(multiple*bitWidth);
+      return build($_builder, $_state, resultType, value);
+    }]>
+  ];
+}
+
+def ExtractOp : MooreOp<"extract"> {
+  let summary = "Addressing operation";
+  let description = [{
+    This operation includes the vector bit/part-select, array, and memory 
+    addressing.If the address is invalid--out of bounds or has x or z bit--
+    then it will produce x for 4-state or 0 for 2-state.
+    Bit-select results are unsigned, regardless of the operands.
+    Part-select results are unsigned, regardless of the operands even if 
+    the part-select specifies the entire vector.
+    See IEEE 1800-2017 § 11.8.1 "Rules for expression types"
+    Example:
+    ```
+    logic v [7:0];
+    v[1];                      // the bit-select addressing
+    v[3:0];                    // the part-select addressing
+    v[3-:4];  v[0+:4];         // They are equivalent to v[3:0]
+    ```
+    See IEEE 1800-2017 § 11.5.1 "Vector bit-select and part-select addressing".
+    Example:
+    ```
+    // an array of 256-by-256 8-bit elements
+    logic [7:0] twod_array [0:255][0:255];
+    logic [7:0] mem_name [0:1023];      // a memory of 1024 8-bit words
+    ```
+    See IEEE 1800-2017 § 11.5.2 "Array and memory addressing".
+    ```
+    moore.extract %v from 1 : !moore.packed<range<logic, 7:0>> -> !moore.logic
     ```
   }];
-  
   let arguments = (ins UnpackedType:$input, I32Attr:$lowBit);
   let results = (outs UnpackedType:$result);
-  
   let assemblyFormat =
-    "$input `from` $lowBit attr-dict `:` functional-type($input, $result)";
+    "$input `from` $lowBit attr-dict `:` type($input) `->` type($result)";
   let builders = [
     OpBuilder<(ins "Value":$lhs, "int32_t":$lowBit, "int32_t":$bitWidth), [{
       auto resultType = $_builder.getIntegerType(bitWidth);
       return build($_builder, $_state, resultType, lhs, lowBit);
     }]>
   ];
-}
-
+} 
 
 #endif // CIRCT_DIALECT_MOORE_MOOREOPS
