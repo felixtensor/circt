@@ -173,8 +173,7 @@ def DirectionAttr: I32EnumAttr<"Direction", "Port direction",
 }
 
 def PortOp : MooreOp<"port", [
-  RecursiveMemoryEffects,
-  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  RecursiveMemoryEffects
 ]> {
   let summary = "Declare a port";
   let description = [{
@@ -188,10 +187,9 @@ def PortOp : MooreOp<"port", [
     ```
   }];
   let arguments = (ins StrAttr:$name, DirectionAttr:$direction);
-  let results = (outs UnpackedType:$result);
+  let results = (outs);
   let assemblyFormat = [{
-    `` custom<ImplicitSSAName>($name) $direction attr-dict
-    `:` type($result)
+    $direction $name attr-dict
   }];
 }
 
