@@ -134,6 +134,32 @@ def ProcedureOp : MooreOp<"procedure", [
 // Declarations
 //===----------------------------------------------------------------------===//
 
+def In: I32EnumAttrCase<"In", 0>;
+def Out: I32EnumAttrCase<"Out", 1>;
+def InOut: I32EnumAttrCase<"InOut", 2>;
+def Ref: I32EnumAttrCase<"Ref", 3>;
+
+def DirectionAttr: I32EnumAttr<"Direction", "Port direction",
+                                  [In, Out, InOut, Ref]>{
+  let cppNamespace = "circt::moore";
+}
+
+def PortOp : MooreOp<"port", [
+  MemoryEffects<[MemAlloc]>,
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+]> {
+  let summary = "Declare a port";
+  let description = [{
+    See IEEE 1800-2017 § 23.2.2 "Port declarations"
+  }];
+  let arguments = (ins StrAttr:$name, DirectionAttr:$direction);
+  let results = (outs UnpackedType:$result);
+  let assemblyFormat = [{
+    `` custom<ImplicitSSAName>($name) $direction attr-dict
+    `:` type($result)
+  }];
+}
+
 def VariableOp : MooreOp<"variable", [
   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
   OptionalTypesMatchWith<"initial value and variable types match",
@@ -147,6 +173,28 @@ def VariableOp : MooreOp<"variable", [
   let results = (outs Res<UnpackedType, "", [MemAlloc]>:$result);
   let assemblyFormat = [{
     `` custom<ImplicitSSAName>($name) ($initial^)? attr-dict
+    `:` type($result)
+  }];
+}
+
+def NetOp : MooreOp<"net", [
+  MemoryEffects<[MemAlloc]>,
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
+  OptionalTypesMatchWith<"assigned value and variable types match",
+    "result", "assignment", "$_self">,
+]> {
+  let summary = "A net declaration";
+  let description = [{
+    See IEEE 1800-2017 § 6.7 "Net declarations".
+  }];
+  let arguments = (ins
+    StrAttr:$name,
+    StrAttr:$kind,
+    Optional<UnpackedType>:$assignment
+  );
+  let results = (outs UnpackedType:$result);
+  let assemblyFormat = [{
+    `` custom<ImplicitSSAName>($name) $kind ($assignment^)? attr-dict
     `:` type($result)
   }];
 }

@@ -38,10 +38,25 @@ LogicalResult InstanceOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 }
 
 //===----------------------------------------------------------------------===//
+// PortOp
+//===----------------------------------------------------------------------===//
+
+void PortOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+  setNameFn(getResult(), getName());
+}
+
+//===----------------------------------------------------------------------===//
 // VariableOp
 //===----------------------------------------------------------------------===//
 
 void VariableOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+  setNameFn(getResult(), getName());
+}
+
+//===----------------------------------------------------------------------===//
+// NetOp
+//===----------------------------------------------------------------------===//
+void NetOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
   setNameFn(getResult(), getName());
 }
 
