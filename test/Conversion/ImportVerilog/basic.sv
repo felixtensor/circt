@@ -45,6 +45,11 @@ module Basic;
   var v0;
   int v1;
   int v2 = v1;
+  
+  // CHECK: %i = moore.net "wire" : !moore.logic
+  // CHECK: %j = moore.net "wire" : !moore.packed<range<logic, 10:0>>
+  wire i;
+  wire [10:0] j;
 
   // CHECK: moore.procedure initial {
   // CHECK: }
