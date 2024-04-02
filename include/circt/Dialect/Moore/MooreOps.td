@@ -155,7 +155,7 @@ def PortOp : MooreOp<"port", [
   let arguments = (ins StrAttr:$name, DirectionAttr:$direction);
   let results = (outs UnpackedType:$result);
   let assemblyFormat = [{
-    `` custom<ImplicitSSAName>($name) $direction attr-dict
+    custom<ImplicitSSAName>($name) $direction attr-dict
     `:` type($result)
   }];
 }
@@ -172,7 +172,7 @@ def VariableOp : MooreOp<"variable", [
   let arguments = (ins StrAttr:$name, Optional<UnpackedType>:$initial);
   let results = (outs Res<UnpackedType, "", [MemAlloc]>:$result);
   let assemblyFormat = [{
-    `` custom<ImplicitSSAName>($name) ($initial^)? attr-dict
+    custom<ImplicitSSAName>($name) ($initial^)? attr-dict
     `:` type($result)
   }];
 }
@@ -194,7 +194,7 @@ def NetOp : MooreOp<"net", [
   );
   let results = (outs UnpackedType:$result);
   let assemblyFormat = [{
-    `` custom<ImplicitSSAName>($name) $kind ($assignment^)? attr-dict
+    custom<ImplicitSSAName>($name) $kind ($assignment^)? attr-dict
     `:` type($result)
   }];
 }
