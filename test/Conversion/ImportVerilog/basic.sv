@@ -49,7 +49,18 @@ module Basic;
   // CHECK: %i = moore.net "wire" : !moore.logic
   // CHECK: %j = moore.net "wire" : !moore.packed<range<logic, 10:0>>
   wire i;
-  wire [10:0] j;
+  wire [15:0] j;
+
+  // CHECK: %0 = moore.constant 0 : !moore.int
+  // CHECK: %1 = moore.conversion %0 : !moore.int -> !moore.packed<range<logic<signed>, 31:0>>
+  // CHECK: %2 = moore.conversion %1 : !moore.packed<range<logic<signed>, 31:0>> -> !moore.logic
+  // CHECK: moore.assign %i, %2 : !moore.logic
+  assign i = 0;
+
+  // CHECK: %3 = moore.constant 12 : !moore.packed<range<bit, 15:0>>
+  // CHECK: %4 = moore.conversion %3 : !moore.packed<range<bit, 15:0>> -> !moore.packed<range<logic, 15:0>>
+  // CHECK: moore.assign %j, %4 : !moore.packed<range<logic, 15:0>>
+  assign j = 16'd12;
 
   // CHECK: moore.procedure initial {
   // CHECK: }
