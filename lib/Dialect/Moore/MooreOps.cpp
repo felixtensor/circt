@@ -56,6 +56,7 @@ void VariableOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 //===----------------------------------------------------------------------===//
 // NetOp
 //===----------------------------------------------------------------------===//
+
 void NetOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
   setNameFn(getResult(), getName());
 }

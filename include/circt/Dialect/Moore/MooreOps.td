@@ -145,11 +145,14 @@ def DirectionAttr: I32EnumAttr<"Direction", "Port direction",
 }
 
 def PortOp : MooreOp<"port", [
-  MemoryEffects<[MemAlloc]>,
   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
 ]> {
   let summary = "Declare a port";
   let description = [{
+    Provide a means of interconnecting a hardware description consisting of modules.
+    A module can instantiate other modules with appropriate port connection. The
+    `moore.port` can be declaration of a variable or net with allowed data types.
+
     See IEEE 1800-2017 § 23.2.2 "Port declarations"
   }];
   let arguments = (ins StrAttr:$name, DirectionAttr:$direction);
@@ -178,13 +181,21 @@ def VariableOp : MooreOp<"variable", [
 }
 
 def NetOp : MooreOp<"net", [
-  MemoryEffects<[MemAlloc]>,
   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
   OptionalTypesMatchWith<"assigned value and variable types match",
     "result", "assignment", "$_self">,
 ]> {
   let summary = "A net declaration";
   let description = [{
+    The `moore.net' operation is a net declaration. Net types defines different types
+    of net connection in SV. There are twelve built-in net types defined in the official
+    standard construct of the operation:
+    `supply0`, `supply1`, `tri`, `triand`, `trior`, `trireg`, `tri0`, `tri1`, `uwire`,
+    `wire`, `wand`, `wor`.
+    Optional assignment argument allows net operation to be initialized with specific
+    values as soon as it is created. It has some features that are not supported:
+    declaring an interconnect net and using user-defined types in the net operation.
+    
     See IEEE 1800-2017 § 6.7 "Net declarations".
   }];
   let arguments = (ins
