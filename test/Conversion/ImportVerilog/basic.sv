@@ -47,7 +47,7 @@ module Basic;
   int v2 = v1;
   
   // CHECK: %i = moore.net "wire" : !moore.logic
-  // CHECK: %j = moore.net "wire" : !moore.packed<range<logic, 10:0>>
+  // CHECK: %j = moore.net "wire" : !moore.packed<range<logic, 15:0>>
   wire i;
   wire [15:0] j;
 
@@ -575,4 +575,32 @@ module NonANSIPortDecl_5 (.p({a, e}));
   input a;
   // CHECK: %e = moore.port Out : !moore.logic
   output e;
+endmodule
+
+// CHECK-LABEL: moore.module @refPortDecl_Top {
+module refPortDecl_Top(
+  // CHECK: %a = moore.port In : !moore.logic
+  input logic a,
+
+  // CHECK: %b = moore.port Out : !moore.packed<range<logic, 7:0>>
+  output logic [7:0] b
+);
+
+  // CHECK: %data = moore.variable : !moore.packed<range<logic, 7:0>>
+  // CHECK: moore.instance "refPortDecl_0" @refPortDecl
+  logic [7:0] data;
+  refPortDecl refPortDecl_0(
+      .in(a),
+      .r(data)
+  );
+endmodule
+
+// CHECK-LABEL: moore.module @refPortDecl {
+module refPortDecl(
+  // CHECK: %in = moore.port In : !moore.logic
+  input logic in,
+
+  // CHECK: %r = moore.port Ref : !moore.packed<range<logic, 7:0>>
+  ref logic [7:0] r
+);
 endmodule
