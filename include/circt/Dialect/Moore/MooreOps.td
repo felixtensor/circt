@@ -193,8 +193,11 @@ def NetOp : MooreOp<"net", [
     `supply0`, `supply1`, `tri`, `triand`, `trior`, `trireg`, `tri0`, `tri1`, `uwire`,
     `wire`, `wand`, `wor`.
     Optional assignment argument allows net operation to be initialized with specific
-    values as soon as it is created. It has some features that are not supported:
-    declaring an interconnect net and using user-defined types in the net operation.
+    values as soon as it is created. Only one net declaration assignment can be made for
+    a particular net. See IEEE 1800-2017 § 10.3.1 "The net declaration assignment" for
+    the differences between net declaration assignments and continuous assign statements.
+    It has some features that are not supported: declaring an interconnect net and using
+    user-defined types in the net operation.
     
     See IEEE 1800-2017 § 6.7 "Net declarations".
   }];
