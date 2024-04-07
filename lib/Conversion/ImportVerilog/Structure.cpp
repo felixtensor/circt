@@ -35,21 +35,6 @@ convertProcedureKind(slang::ast::ProceduralBlockKind kind) {
   llvm_unreachable("all procedure kinds handled");
 }
 
-static moore::Direction
-convertPortDirection(slang::ast::ArgumentDirection direction) {
-  switch (direction) {
-  case slang::ast::ArgumentDirection::In:
-    return moore::Direction::In;
-  case slang::ast::ArgumentDirection::InOut:
-    return moore::Direction::InOut;
-  case slang::ast::ArgumentDirection::Out:
-    return moore::Direction::Out;
-  case slang::ast::ArgumentDirection::Ref:
-    return moore::Direction::Ref;
-  }
-  llvm_unreachable("all port direction handled");
-}
-
 namespace {
 struct MemberVisitor {
   Context &context;
@@ -99,16 +84,9 @@ struct MemberVisitor {
         return failure();
     }
 
-    if (context.portMap.contains(&varNode.location)) {
-      auto portOp = builder.create<moore::PortOp>(
-          loc, loweredType, builder.getStringAttr(varNode.name),
-          context.portMap[&varNode.location]);
-      context.valueSymbols.insert(&varNode, portOp);
-    } else {
-      auto varOp = builder.create<moore::VariableOp>(
-          loc, loweredType, builder.getStringAttr(varNode.name), initial);
-      context.valueSymbols.insert(&varNode, varOp);
-    }
+    auto varOp = builder.create<moore::VariableOp>(
+        loc, loweredType, builder.getStringAttr(varNode.name), initial);
+    context.valueSymbols.insert(&varNode, varOp);
     return success();
   }
 
@@ -125,32 +103,10 @@ struct MemberVisitor {
         return failure();
     }
 
-    if (context.portMap.contains(&netNode.location)) {
-      auto portOp = builder.create<moore::PortOp>(
-          loc, loweredType, builder.getStringAttr(netNode.name),
-          context.portMap[&netNode.location]);
-      context.valueSymbols.insert(&netNode, portOp);
-    } else {
-      auto netOp = builder.create<moore::NetOp>(
-          loc, loweredType, builder.getStringAttr(netNode.name),
-          builder.getStringAttr(netNode.netType.name), assignment);
-      context.valueSymbols.insert(&netNode, netOp);
-    }
-    return success();
-  }
-
-  // Handle ports.
-  LogicalResult visit(const slang::ast::PortSymbol &portNode) {
-    context.portMap[&portNode.internalSymbol->location] =
-        convertPortDirection(portNode.direction);
-    return success();
-  }
-
-  // Handle multiple ports
-  LogicalResult visit(const slang::ast::MultiPortSymbol &mportNode) {
-    for (const auto *port : mportNode.ports)
-      context.portMap[&port->internalSymbol->location] =
-          convertPortDirection(port->direction);
+    auto netOp = builder.create<moore::NetOp>(
+        loc, loweredType, builder.getStringAttr(netNode.name),
+        builder.getStringAttr(netNode.netType.name), assignment);
+    context.valueSymbols.insert(&netNode, netOp);
     return success();
   }
 
@@ -270,17 +226,9 @@ Context::convertModuleHeader(const slang::ast::InstanceBodySymbol *module) {
   // Handle the port list.
   for (auto *symbol : module->getPortList()) {
     auto portLoc = convertLocation(symbol->location);
-
-    switch (symbol->kind) {
-    case slang::ast::SymbolKind::Port:
-    case slang::ast::SymbolKind::MultiPort:
-      break;
-    // If an unsupported port is encountered, discard the error message.
-    default:
-      mlir::emitError(portLoc, "unsupported module port: `")
-          << symbol->name << "` (" << slang::ast::toString(symbol->kind) << ")";
-      return {};
-    }
+    mlir::emitError(portLoc, "unsupported module port: ")
+        << slang::ast::toString(symbol->kind);
+    return {};
   }
 
   // Pick an insertion point for this module according to the source file

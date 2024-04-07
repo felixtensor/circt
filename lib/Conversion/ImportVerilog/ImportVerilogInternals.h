@@ -83,10 +83,6 @@ struct Context {
   /// not been converted yet.
   std::queue<const slang::ast::InstanceBodySymbol *> moduleWorklist;
 
-  /// A list of ports for recording locations of ports to bypass extra
-  /// declaration of net or variable operation.
-  DenseMap<const slang::SourceLocation *, moore::Direction> portMap;
-
   /// A table of defined values, such as variables, that may be referred to by
   /// name in expressions. The expressions use this table to lookup the MLIR
   /// value that was created for a given declaration in the Slang AST node.

@@ -134,35 +134,6 @@ def ProcedureOp : MooreOp<"procedure", [
 // Declarations
 //===----------------------------------------------------------------------===//
 
-def In: I32EnumAttrCase<"In", 0>;
-def Out: I32EnumAttrCase<"Out", 1>;
-def InOut: I32EnumAttrCase<"InOut", 2>;
-def Ref: I32EnumAttrCase<"Ref", 3>;
-
-def DirectionAttr: I32EnumAttr<"Direction", "Port direction",
-                                  [In, Out, InOut, Ref]>{
-  let cppNamespace = "circt::moore";
-}
-
-def PortOp : MooreOp<"port", [
-  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
-]> {
-  let summary = "Declare a port";
-  let description = [{
-    Provide a means of interconnecting a hardware description consisting of modules.
-    A module can instantiate other modules with appropriate port connection. The
-    `moore.port` can be declaration of a variable or net with allowed data types.
-
-    See IEEE 1800-2017 § 23.2.2 "Port declarations"
-  }];
-  let arguments = (ins StrAttr:$name, DirectionAttr:$direction);
-  let results = (outs UnpackedType:$result);
-  let assemblyFormat = [{
-    custom<ImplicitSSAName>($name) $direction attr-dict
-    `:` type($result)
-  }];
-}
-
 def VariableOp : MooreOp<"variable", [
   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
   OptionalTypesMatchWith<"initial value and variable types match",
