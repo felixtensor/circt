@@ -108,6 +108,80 @@ OutputOp SVModuleOp::getOutputOp() {
 OperandRange SVModuleOp::getOutputs() { return getOutputOp().getOperands(); }
 
 //===----------------------------------------------------------------------===//
+// SVExtModuleOp
+//===----------------------------------------------------------------------===//
+void SVExtModuleOp::build(OpBuilder &builder, OperationState &state,
+                          StringRef name, hw::ModuleType type) {
+  state.addAttribute(SymbolTable::getSymbolAttrName(),
+                     builder.getStringAttr(name));
+  state.addAttribute(getModuleTypeAttrName(state.name), TypeAttr::get(type));
+  state.addRegion();
+}
+
+void SVExtModuleOp::print(OpAsmPrinter &p) {
+  SVExtModuleOp op = *this;
+
+  p << " ";
+
+  // Print the visibility of the module.
+  StringRef visibilityAttrName = SymbolTable::getVisibilityAttrName();
+  if (auto visibility = (*this)->getAttrOfType<StringAttr>(visibilityAttrName))
+    p << visibility.getValue() << ' ';
+
+  // Print the operation and module name.
+  p.printSymbolName(SymbolTable::getSymbolName(*this).getValue());
+
+  hw::module_like_impl::printModuleSignatureNew(p, op.getBody(),
+                                                op.getModuleType(), {}, {});
+
+  p << " ";
+
+  p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs(),
+                                     getAttributeNames());
+}
+
+ParseResult SVExtModuleOp::parse(OpAsmParser &parser, OperationState &result) {
+  // Parse the visibility attribute.
+  (void)mlir::impl::parseOptionalVisibilityKeyword(parser, result.attributes);
+
+  // Parse the extern module name as a symbol.
+  StringAttr nameAttr;
+  if (parser.parseSymbolName(nameAttr, getSymNameAttrName(result.name),
+                             result.attributes))
+    return failure();
+
+  // Parse the ports.
+  SmallVector<hw::module_like_impl::PortParse> ports;
+  TypeAttr modType;
+  if (failed(
+          hw::module_like_impl::parseModuleSignature(parser, ports, modType)))
+    return failure();
+  result.addAttribute(getModuleTypeAttrName(result.name), modType);
+
+  // Parse the attributes dict.
+  if (failed(parser.parseOptionalAttrDictWithKeyword(result.attributes)))
+    return failure();
+
+  // Add the entry block arguments.
+  SmallVector<OpAsmParser::Argument, 4> entryArgs;
+  for (auto &port : ports)
+    if (port.direction != hw::ModulePort::Direction::Output)
+      entryArgs.push_back(port);
+
+  return success();
+}
+
+void SVExtModuleOp::getAsmBlockArgumentNames(
+    mlir::Region &region, mlir::OpAsmSetValueNameFn setNameFn) {
+  if (&region != &getBody())
+    return;
+
+  auto moduleType = getModuleType();
+  for (auto [index, arg] : llvm::enumerate(region.front().getArguments()))
+    setNameFn(arg, moduleType.getInputNameAttr(index));
+}
+
+//===----------------------------------------------------------------------===//
 // OutputOp
 //===----------------------------------------------------------------------===//
 

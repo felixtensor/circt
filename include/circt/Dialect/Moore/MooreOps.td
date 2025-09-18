@@ -90,6 +90,35 @@ def SVModuleOp : MooreOp<"module", [
   }];
 }
 
+def SVExtModuleOp : MooreOp<"extmodule", [
+  IsolatedFromAbove,
+  Symbol,
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
+  ]> {
+    let summary = "An extern module definition";
+    let description = [{
+      The `moore.extmodule` operation represents an extern module, including
+      its name, port list.
+
+      See IEEE 1800-2017 § 23.5 "Extern modules".
+    }];
+    let arguments = (ins
+      SymbolNameAttr:$sym_name,
+      TypeAttrOf<ModuleType>:$module_type,
+      OptionalAttr<StrAttr>:$sym_visibility
+    );
+    let results = (outs);
+    let regions = (region AnyRegion:$body);
+    let hasCustomAssemblyFormat = 1;
+    let builders = [OpBuilder<
+      (ins "StringRef":$name, "hw::ModuleType":$type)>];
+    let extraClassDeclaration = [{
+
+    }];
+    
+
+}
+
 def OutputOp : MooreOp<"output", [
   Terminator, HasParent<"SVModuleOp">, Pure, ReturnLike
 ]> {
